@@ -30,6 +30,13 @@ class Settings(BaseSettings):
     # LLM Settings
     llm_model: str = "gpt-4o"  # Model deployment name (gpt-4o, gpt-35-turbo, deepseek-chat, etc.)
 
+    # Pinecone Settings
+    pinecone_api_key: str = ""
+    pinecone_index_name: str = "socar-documents"
+    pinecone_cloud: str = "aws"
+    pinecone_region: str = "us-east-1"
+    vector_db_type: str = "chroma"  # Options: chroma, pinecone
+
     class Config:
         env_file = ".env"
         case_sensitive = False

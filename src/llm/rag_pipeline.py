@@ -4,7 +4,7 @@ from typing import List, Dict, Optional
 from loguru import logger
 
 from src.llm.deepseek_client import get_deepseek_client
-from src.vectordb.chroma_store import get_vector_store
+from src.vectordb import get_vector_store
 from src.api.models import SourceReference
 
 
