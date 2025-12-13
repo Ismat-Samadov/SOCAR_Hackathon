@@ -35,7 +35,6 @@ COPY --from=builder /usr/local/bin /usr/local/bin
 # Copy application code
 COPY src/ ./src/
 COPY run.py .
-COPY .env .
 
 # Create directories for data
 RUN mkdir -p data/pdfs data/vector_db data/processed
