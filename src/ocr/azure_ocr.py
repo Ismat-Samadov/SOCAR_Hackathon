@@ -3,10 +3,12 @@
 from typing import List, Dict
 from pathlib import Path
 import io
+import base64
 from loguru import logger
 
 from azure.ai.formrecognizer import DocumentAnalysisClient
 from azure.core.credentials import AzureKeyCredential
+import fitz  # PyMuPDF for image extraction
 
 from src.config import settings
 
@@ -26,15 +28,16 @@ class AzureOCRProcessor:
         )
         logger.info("Initialized Azure Document Analysis client")
 
-    def process_pdf(self, pdf_file: bytes) -> List[Dict[str, any]]:
+    def process_pdf(self, pdf_file: bytes, pdf_name: str = "document.pdf") -> List[Dict[str, any]]:
         """
-        Process PDF and extract text using Azure Document Intelligence
+        Process PDF and extract text + images using Azure Document Intelligence
 
         Args:
             pdf_file: PDF file as bytes
+            pdf_name: Name of the PDF file (for logging)
 
         Returns:
-            List of dicts with page_number and MD_text
+            List of dicts with page_number, MD_text, and images (base64)
         """
         try:
             logger.info(f"Processing PDF ({len(pdf_file)} bytes)")
@@ -45,20 +48,28 @@ class AzureOCRProcessor:
             )
             result = poller.result()
 
+            # Extract images using PyMuPDF
+            images_by_page = self._extract_images_from_pdf(pdf_file)
+
             # Extract text page by page
             pages_data = []
             for page_num, page in enumerate(result.pages, start=1):
-                # Collect all lines from this page
+                # Collect all lines from this page (PRESERVE CYRILLIC)
                 lines = []
                 if hasattr(page, 'lines') and page.lines:
                     for line in page.lines:
+                        # Azure OCR preserves original encoding (Cyrillic stays Cyrillic)
                         lines.append(line.content)
 
                 page_text = "\n".join(lines) if lines else ""
 
+                # Get images for this page
+                page_images = images_by_page.get(page_num - 1, [])  # 0-indexed
+
                 pages_data.append({
                     "page_number": page_num,
-                    "MD_text": page_text
+                    "MD_text": page_text,
+                    "images": page_images  # List of base64 encoded images
                 })
 
             logger.info(f"Successfully processed {len(pages_data)} pages")
@@ -67,6 +78,49 @@ class AzureOCRProcessor:
         except Exception as e:
             logger.error(f"Error processing PDF with Azure: {e}")
             raise
+
+    def _extract_images_from_pdf(self, pdf_file: bytes) -> Dict[int, List[str]]:
+        """
+        Extract images from PDF using PyMuPDF
+
+        Args:
+            pdf_file: PDF file as bytes
+
+        Returns:
+            Dict mapping page_number (0-indexed) to list of base64 encoded images
+        """
+        images_by_page = {}
+
+        try:
+            # Open PDF with PyMuPDF
+            pdf_document = fitz.open(stream=pdf_file, filetype="pdf")
+
+            for page_num in range(len(pdf_document)):
+                page = pdf_document[page_num]
+                images = []
+
+                # Get images from page
+                image_list = page.get_images()
+
+                for img_index, img in enumerate(image_list):
+                    xref = img[0]
+                    base_image = pdf_document.extract_image(xref)
+                    image_bytes = base_image["image"]
+
+                    # Convert to base64
+                    image_base64 = base64.b64encode(image_bytes).decode('utf-8')
+                    images.append(image_base64)
+
+                if images:
+                    images_by_page[page_num] = images
+                    logger.info(f"Extracted {len(images)} images from page {page_num + 1}")
+
+            pdf_document.close()
+
+        except Exception as e:
+            logger.warning(f"Could not extract images: {e}")
+
+        return images_by_page
 
 
 # Singleton instance
