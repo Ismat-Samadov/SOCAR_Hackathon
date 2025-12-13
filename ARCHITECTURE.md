@@ -78,15 +78,14 @@ self.embedding_dimension = 1024
 ---
 
 ### 4. LLM (Answer Generation)
-**Model**: `o1` (GPT O1 - latest OpenAI model)
-**Previous**: Llama-4-Maverick-17B-128E-Instruct-FP8 ✅
+**Model**: `Llama-4-Maverick-17B-128E-Instruct-FP8` (Open-source)
 **Purpose**: Generates contextual answers based on retrieved documents
 **Provider**: Azure OpenAI
 
 **Location**: `src/config.py:31`
 
 ```python
-llm_model = "o1"  # Latest GPT model
+llm_model = "Llama-4-Maverick-17B-128E-Instruct-FP8"
 ```
 
 **Parameters**:
@@ -109,7 +108,7 @@ User Query
     ↓
 4. Build Context (3 documents × 600 chars)
     ↓
-5. LLM Generation (GPT O1)
+5. LLM Generation (Llama-4-Maverick-17B)
     ↓
 Response with Citations
 ```
@@ -214,7 +213,7 @@ curl -X POST http://localhost:8000/llm \
 | **OCR** | Azure Document Intelligence | Extract text + detect images (92.79% CSR, Cyrillic preserved) |
 | **Embeddings** | BAAI/bge-large-en-v1.5 (1024-dim) | Convert text → vectors for search |
 | **Vector DB** | Pinecone (AWS us-east-1) | Store & search 1,241 document chunks |
-| **LLM** | GPT O1 (latest OpenAI) | Generate contextual answers |
+| **LLM** | Llama-4-Maverick-17B-128E-Instruct-FP8 | Generate contextual answers (Open-source) |
 
 ---
 
@@ -228,7 +227,7 @@ curl -X POST http://localhost:8000/llm \
 - ✅ Azure Document Intelligence (enterprise-grade OCR)
 
 ### LLM Quality (30%)
-- ✅ **GPT O1** (latest OpenAI model - highest quality)
+- ✅ **Llama-4-Maverick-17B-128E-Instruct-FP8** (Open-source model)
 - ✅ RAG with 3-document retrieval
 - ✅ Source citations
 - ✅ Contextual accuracy

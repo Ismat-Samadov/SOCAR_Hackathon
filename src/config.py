@@ -28,7 +28,7 @@ class Settings(BaseSettings):
     ocr_backend: str = "azure"  # Azure Document Intelligence (92.79% CSR)
 
     # LLM Settings
-    llm_model: str = "o1"  # Latest GPT model (o1, gpt-4o, etc.)
+    llm_model: str = "Llama-4-Maverick-17B-128E-Instruct-FP8"  # Open-source LLM for hackathon
 
     # Pinecone Settings
     pinecone_api_key: str = ""
