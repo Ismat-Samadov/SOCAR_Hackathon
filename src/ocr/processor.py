@@ -15,21 +15,18 @@ class OCRProcessor:
         Initialize OCR processor
 
         Args:
-            backend: OCR backend to use (azure, paddle, easy, tesseract)
+            backend: OCR backend to use (azure)
                     If None, uses settings.ocr_backend
         """
         self.backend = backend or settings.ocr_backend
         logger.info(f"Initializing OCR processor with backend: {self.backend}")
 
-        # Initialize the appropriate processor
+        # Initialize Azure OCR processor
         if self.backend == "azure":
             from src.ocr.azure_ocr import get_azure_ocr_processor
             self.processor = get_azure_ocr_processor()
-        elif self.backend == "tesseract":
-            from src.ocr.tesseract_ocr import get_tesseract_ocr_processor
-            self.processor = get_tesseract_ocr_processor()
         else:
-            raise ValueError(f"Unsupported OCR backend: {self.backend}")
+            raise ValueError(f"Unsupported OCR backend: {self.backend}. Only 'azure' is supported.")
 
     def process_pdf(self, pdf_file: bytes, filename: str = None) -> List[Dict[str, any]]:
         """

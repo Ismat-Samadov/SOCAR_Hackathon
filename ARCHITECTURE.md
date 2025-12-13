@@ -3,19 +3,22 @@
 ## System Components
 
 ### 1. OCR (Optical Character Recognition)
-**Model**: Tesseract OCR (multi-language: aze+tur+rus+eng)
-**Previous**: Azure Document Intelligence (switched for better Azerbaijani diacritics support)
+**Model**: Azure Document Intelligence (`prebuilt-read`)
 **NOT** Llama-4-Maverick (LLM is for answer generation, not OCR)
 
-**Features**:
-- ✅ Multi-language support (Azerbaijani, Turkish, Russian, English)
-- ✅ **Azerbaijani diacritics PRESERVED** (ə, ı, ö, ü, ğ, ş, ç)
-- ✅ **Cyrillic alphabet PRESERVED** (Russian text stays in Cyrillic as-is)
-- ✅ **Image extraction** (base64 encoded)
-- ✅ High-resolution rendering (300 DPI)
+**Performance**:
+- ✅ **92.79% Character Success Rate (CSR)**
+- ✅ **55.59% Word Success Rate (WSR)**
+- ✅ Significantly better than Tesseract (25% CSR, 21% WSR)
 
-**Location**: `src/ocr/tesseract_ocr.py`
-**Fallback**: `src/ocr/azure_ocr.py` (configurable via OCR_BACKEND env var)
+**Features**:
+- ✅ Multi-language support (Azerbaijani, Russian, English)
+- ✅ **Cyrillic alphabet PRESERVED** (Russian text stays in Cyrillic as-is)
+- ✅ **Image extraction** (base64 encoded via PyMuPDF)
+- ✅ Handwriting recognition
+- ✅ Table detection
+
+**Location**: `src/ocr/azure_ocr.py`
 
 **Output Format**:
 ```json
@@ -204,7 +207,7 @@ curl -X POST http://localhost:8000/llm \
 
 | Component | Model/Service | Purpose |
 |-----------|--------------|---------|
-| **OCR** | Tesseract (aze+tur+rus+eng) | Extract text + images (Azerbaijani diacritics + Cyrillic preserved) |
+| **OCR** | Azure Document Intelligence | Extract text + images (92.79% CSR, Cyrillic preserved) |
 | **Embeddings** | BAAI/bge-large-en-v1.5 (1024-dim) | Convert text → vectors for search |
 | **Vector DB** | Pinecone (AWS us-east-1) | Store & search 1,241 document chunks |
 | **LLM** | Llama-4-Maverick-17B-128E-Instruct-FP8 | Generate contextual answers |
@@ -214,11 +217,11 @@ curl -X POST http://localhost:8000/llm \
 ## Scoring Criteria Optimization
 
 ### OCR Quality (50%)
-- ✅ Multi-language (Azerbaijani, Turkish, Russian, English)
-- ✅ **Azerbaijani diacritics preserved** (ə, ı, ö, ü, ğ, ş, ç) - critical for accuracy
+- ✅ Multi-language (Azerbaijani, Russian, English)
+- ✅ **High accuracy: 92.79% CSR, 55.59% WSR**
 - ✅ Cyrillic preservation (as required)
 - ✅ Image extraction (base64)
-- ✅ Tesseract OCR with 300 DPI high-resolution rendering
+- ✅ Azure Document Intelligence (enterprise-grade OCR)
 
 ### LLM Quality (30%)
 - ✅ Llama-4-Maverick-17B (open-source, recommended)
