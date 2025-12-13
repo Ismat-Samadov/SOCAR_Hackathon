@@ -20,7 +20,7 @@
 [
   {
     "page_number": 1,
-    "MD_text": "Extracted text content...\n\n![Image](document_page_1_image_1)\n\n"
+    "MD_text": "Extracted text content...\n\n![Image](document_name.pdf/page_1/image_1)\n\n"
   }
 ]
 ```
@@ -28,9 +28,10 @@
 **Key Points**:
 - List of dictionaries (NOT nested object with "pages" field)
 - Only two keys: `page_number` (int) and `MD_text` (str)
-- Images referenced inline in MD_text as markdown: `![Image](document_page_X_image_Y)`
+- Images referenced inline in MD_text as markdown path: `![Image](document_name.pdf/page_X/image_Y)`
+- Path format: `{pdf_filename}/{page_folder}/{image_name}`
 - NO separate "images" field
-- NO base64 encoding - just simple text references
+- NO base64 encoding - just simple path-like text references
 - Only add image markdown when images actually exist on page
 
 #### /llm Response
@@ -155,6 +156,9 @@ Response with Citations
 - Chunk size: 600 characters
 - Overlap: 100 characters
 - Preserves context across chunks
+- **Important**: Only store extracted TEXT in vector database, NOT image markdown references
+- Strip out image markdown (`![Image](...)`) before ingestion
+- Images are only for OCR endpoint response, not for RAG
 
 ---
 
@@ -167,13 +171,39 @@ Response with Citations
 
 ### Image Handling
 - **Method**: Detect images using PyMuPDF
-- **Format**: Simple text references like `document_page_1_image_1`
-- **Markdown**: `![Image](reference)`
+- **Format**: Path-like references: `document_name.pdf/page_X/image_Y`
+- **Markdown**: `![Image](document_name.pdf/page_1/image_1)`
+- **Path Structure**: `{pdf_filename}/{page_folder}/{image_name}`
 - **Important**:
   - NO file saving
   - NO base64 encoding
   - Only add markdown when images exist
   - Check `if image_list:` before adding
+  - Include full PDF filename in path
+
+### OCR vs Vector Database (Critical Distinction)
+**OCR Endpoint (`/ocr`)**:
+- Returns text WITH image markdown references
+- Format: `![Image](document.pdf/page_1/image_1)`
+- Purpose: Show complete document structure to user
+
+**Vector Database Ingestion**:
+- Store ONLY text content, NO image references
+- Strip out all `![Image](...)` markdown before adding to vector DB
+- Purpose: Enable semantic search on text only
+- Image markdown would pollute search results
+
+**Example**:
+```python
+# OCR Response (with images)
+MD_text = "Oil reserves...\n\n![Image](doc.pdf/page_1/image_1)\n\nTotal production..."
+
+# Vector DB ingestion (text only)
+import re
+text_only = re.sub(r'!\[Image\]\([^)]+\)', '', MD_text)
+# Result: "Oil reserves...\n\nTotal production..."
+vector_db.add(text_only)
+```
 
 ### Public Access
 - Use ngrok for public endpoint
@@ -218,14 +248,19 @@ SOCAR_Hackathon/
 async def ocr_endpoint(file: UploadFile = File(...)):
     # 1. Read PDF bytes
     pdf_bytes = await file.read()
+    pdf_filename = file.filename  # e.g., "document_06.pdf"
 
     # 2. Process with Azure Document Intelligence
     # - Extract text page by page
     # - Detect images with PyMuPDF
-    # - Create simple references (don't save files)
+    # - Create path-like references: pdf_filename/page_X/image_Y
     # - Embed image references in MD_text
 
-    # 3. Return list of dicts
+    # 3. Example of adding image reference
+    # for each image detected on page 1:
+    #   md_text += f"\n\n![Image]({pdf_filename}/page_1/image_1)\n\n"
+
+    # 4. Return list of dicts
     return [
         {"page_number": 1, "MD_text": "text..."},
         {"page_number": 2, "MD_text": "text..."}
@@ -328,7 +363,7 @@ curl -X POST https://your-url.ngrok-free.dev/llm \
 **Solution**: Use Azure Document Intelligence (92.79% vs 25% CSR)
 
 ### Issue: Images bloating response
-**Solution**: Don't use base64, just text references like `document_page_1_image_1`
+**Solution**: Don't use base64, use path-like text references: `document_name.pdf/page_1/image_1`
 
 ### Issue: Wrong response format
 **Solution**: Return list directly, not `{"pages": [...]}`
