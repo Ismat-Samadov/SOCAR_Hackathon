@@ -14,7 +14,7 @@
 **Features**:
 - ✅ Multi-language support (Azerbaijani, Russian, English)
 - ✅ **Cyrillic alphabet PRESERVED** (Russian text stays in Cyrillic as-is)
-- ✅ **Image extraction** (base64 encoded via PyMuPDF)
+- ✅ **Image detection** (lightweight references via PyMuPDF)
 - ✅ Handwriting recognition
 - ✅ Table detection
 
@@ -25,15 +25,17 @@
 [
   {
     "page_number": 1,
-    "MD_text": "Text content with inline images...\n\n![Image 1](data:image/jpeg;base64,/9j/4AAQ...)\n\n"
+    "MD_text": "Text content with image references...\n\n![Image](document_page_1_image_1)\n\n"
   }
 ]
 ```
 
-**Image Embedding**:
-- Images embedded inline in MD_text as markdown data URIs
-- Format: `![Image {number}](data:image/{format};base64,{base64_data})`
+**Image Handling**:
+- Images detected and referenced inline in MD_text (not saved to disk)
+- Format: `![Image](document_page_X_image_Y)`
+- Simple lightweight references, no base64, no file storage
 - No separate "images" field - everything in MD_text
+- Only adds image markdown when images actually exist on page
 
 ---
 
@@ -135,34 +137,33 @@ Response with Citations
 
 ---
 
-## Image Extraction
+## Image Detection
 
 **Method**: PyMuPDF (fitz)
-**Format**: Base64 encoded
+**Format**: Simple text references (not saved to disk)
 **Included in**: OCR endpoint `/ocr`
 
 **Example Response**:
 ```json
-{
-  "pdf_name": "document_06.pdf",
-  "pages": [
-    {
-      "page_number": 1,
-      "MD_text": "Oil exploration map...",
-      "images": [
-        "iVBORw0KGgoAAAANSUhEUgAA..." // base64 encoded PNG/JPEG
-      ]
-    }
-  ]
-}
+[
+  {
+    "page_number": 1,
+    "MD_text": "Oil exploration map...\n\n![Image](document_06_page_1_image_1)\n\n"
+  }
+]
 ```
+
+**Key Features**:
+- Lightweight: No file storage, no base64 encoding
+- Smart: Only adds image markdown when images exist
+- Clean: Simple references like `document_page_1_image_1`
 
 ---
 
 ## API Endpoints
 
 ### 1. `POST /ocr` - PDF Processing
-Extract text + images from PDF
+Extract text and detect images from PDF
 
 **Request**:
 ```bash
@@ -175,7 +176,7 @@ curl -X POST http://localhost:8000/ocr \
 [
   {
     "page_number": 1,
-    "MD_text": "Нефтяные месторождения...\n\n![Image 1](data:image/jpeg;base64,/9j/4AAQ...)\n\n"
+    "MD_text": "Нефтяные месторождения...\n\n![Image](document_page_1_image_1)\n\n"
   }
 ]
 ```
@@ -210,7 +211,7 @@ curl -X POST http://localhost:8000/llm \
 
 | Component | Model/Service | Purpose |
 |-----------|--------------|---------|
-| **OCR** | Azure Document Intelligence | Extract text + images (92.79% CSR, Cyrillic preserved) |
+| **OCR** | Azure Document Intelligence | Extract text + detect images (92.79% CSR, Cyrillic preserved) |
 | **Embeddings** | BAAI/bge-large-en-v1.5 (1024-dim) | Convert text → vectors for search |
 | **Vector DB** | Pinecone (AWS us-east-1) | Store & search 1,241 document chunks |
 | **LLM** | GPT O1 (latest OpenAI) | Generate contextual answers |
@@ -223,7 +224,7 @@ curl -X POST http://localhost:8000/llm \
 - ✅ Multi-language (Azerbaijani, Russian, English)
 - ✅ **High accuracy: 92.79% CSR, 55.59% WSR**
 - ✅ Cyrillic preservation (as required)
-- ✅ Image extraction (base64)
+- ✅ Image detection (lightweight references)
 - ✅ Azure Document Intelligence (enterprise-grade OCR)
 
 ### LLM Quality (30%)
