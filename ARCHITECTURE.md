@@ -22,12 +22,18 @@
 
 **Output Format**:
 ```json
-{
-  "page_number": 1,
-  "MD_text": "Text content (Cyrillic preserved: Добыча нефти)",
-  "images": ["base64_encoded_image_1", "base64_encoded_image_2"]
-}
+[
+  {
+    "page_number": 1,
+    "MD_text": "Text content with inline images...\n\n![Image 1](data:image/jpeg;base64,/9j/4AAQ...)\n\n"
+  }
+]
 ```
+
+**Image Embedding**:
+- Images embedded inline in MD_text as markdown data URIs
+- Format: `![Image {number}](data:image/{format};base64,{base64_data})`
+- No separate "images" field - everything in MD_text
 
 ---
 
@@ -70,14 +76,15 @@ self.embedding_dimension = 1024
 ---
 
 ### 4. LLM (Answer Generation)
-**Model**: `Llama-4-Maverick-17B-128E-Instruct-FP8` ✅
+**Model**: `o1` (GPT O1 - latest OpenAI model)
+**Previous**: Llama-4-Maverick-17B-128E-Instruct-FP8 ✅
 **Purpose**: Generates contextual answers based on retrieved documents
-**Provider**: Azure AI Foundry
+**Provider**: Azure OpenAI
 
-**Location**: `src/llm/deepseek_client.py:24`
+**Location**: `src/config.py:31`
 
 ```python
-model_name = settings.llm_model  # Llama-4-Maverick-17B-128E-Instruct-FP8
+llm_model = "o1"  # Latest GPT model
 ```
 
 **Parameters**:
@@ -100,7 +107,7 @@ User Query
     ↓
 4. Build Context (3 documents × 600 chars)
     ↓
-5. LLM Generation (Llama-4-Maverick-17B)
+5. LLM Generation (GPT O1)
     ↓
 Response with Citations
 ```
@@ -165,16 +172,12 @@ curl -X POST http://localhost:8000/ocr \
 
 **Response**:
 ```json
-{
-  "pdf_name": "document.pdf",
-  "pages": [
-    {
-      "page_number": 1,
-      "MD_text": "Нефтяные месторождения...",
-      "images": ["base64_image_1", "base64_image_2"]
-    }
-  ]
-}
+[
+  {
+    "page_number": 1,
+    "MD_text": "Нефтяные месторождения...\n\n![Image 1](data:image/jpeg;base64,/9j/4AAQ...)\n\n"
+  }
+]
 ```
 
 ### 2. `POST /llm` - RAG Chatbot
@@ -210,7 +213,7 @@ curl -X POST http://localhost:8000/llm \
 | **OCR** | Azure Document Intelligence | Extract text + images (92.79% CSR, Cyrillic preserved) |
 | **Embeddings** | BAAI/bge-large-en-v1.5 (1024-dim) | Convert text → vectors for search |
 | **Vector DB** | Pinecone (AWS us-east-1) | Store & search 1,241 document chunks |
-| **LLM** | Llama-4-Maverick-17B-128E-Instruct-FP8 | Generate contextual answers |
+| **LLM** | GPT O1 (latest OpenAI) | Generate contextual answers |
 
 ---
 
@@ -224,7 +227,7 @@ curl -X POST http://localhost:8000/llm \
 - ✅ Azure Document Intelligence (enterprise-grade OCR)
 
 ### LLM Quality (30%)
-- ✅ Llama-4-Maverick-17B (open-source, recommended)
+- ✅ **GPT O1** (latest OpenAI model - highest quality)
 - ✅ RAG with 3-document retrieval
 - ✅ Source citations
 - ✅ Contextual accuracy
