@@ -3,17 +3,19 @@
 ## System Components
 
 ### 1. OCR (Optical Character Recognition)
-**Model**: Azure Document Intelligence (`prebuilt-read`)
+**Model**: Tesseract OCR (multi-language: aze+tur+rus+eng)
+**Previous**: Azure Document Intelligence (switched for better Azerbaijani diacritics support)
 **NOT** Llama-4-Maverick (LLM is for answer generation, not OCR)
 
 **Features**:
-- ✅ Multi-language support (Azerbaijani, Russian, English)
+- ✅ Multi-language support (Azerbaijani, Turkish, Russian, English)
+- ✅ **Azerbaijani diacritics PRESERVED** (ə, ı, ö, ü, ğ, ş, ç)
 - ✅ **Cyrillic alphabet PRESERVED** (Russian text stays in Cyrillic as-is)
-- ✅ Handwriting recognition
 - ✅ **Image extraction** (base64 encoded)
-- ✅ Table detection
+- ✅ High-resolution rendering (300 DPI)
 
-**Location**: `src/ocr/azure_ocr.py`
+**Location**: `src/ocr/tesseract_ocr.py`
+**Fallback**: `src/ocr/azure_ocr.py` (configurable via OCR_BACKEND env var)
 
 **Output Format**:
 ```json
@@ -202,7 +204,7 @@ curl -X POST http://localhost:8000/llm \
 
 | Component | Model/Service | Purpose |
 |-----------|--------------|---------|
-| **OCR** | Azure Document Intelligence | Extract text + images (Cyrillic preserved) |
+| **OCR** | Tesseract (aze+tur+rus+eng) | Extract text + images (Azerbaijani diacritics + Cyrillic preserved) |
 | **Embeddings** | BAAI/bge-large-en-v1.5 (1024-dim) | Convert text → vectors for search |
 | **Vector DB** | Pinecone (AWS us-east-1) | Store & search 1,241 document chunks |
 | **LLM** | Llama-4-Maverick-17B-128E-Instruct-FP8 | Generate contextual answers |
@@ -212,10 +214,11 @@ curl -X POST http://localhost:8000/llm \
 ## Scoring Criteria Optimization
 
 ### OCR Quality (50%)
-- ✅ Multi-language (Azerbaijani, Russian, English)
+- ✅ Multi-language (Azerbaijani, Turkish, Russian, English)
+- ✅ **Azerbaijani diacritics preserved** (ə, ı, ö, ü, ğ, ş, ç) - critical for accuracy
 - ✅ Cyrillic preservation (as required)
 - ✅ Image extraction (base64)
-- ✅ High accuracy (Azure Document Intelligence)
+- ✅ Tesseract OCR with 300 DPI high-resolution rendering
 
 ### LLM Quality (30%)
 - ✅ Llama-4-Maverick-17B (open-source, recommended)

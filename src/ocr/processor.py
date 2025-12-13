@@ -25,6 +25,9 @@ class OCRProcessor:
         if self.backend == "azure":
             from src.ocr.azure_ocr import get_azure_ocr_processor
             self.processor = get_azure_ocr_processor()
+        elif self.backend == "tesseract":
+            from src.ocr.tesseract_ocr import get_tesseract_ocr_processor
+            self.processor = get_tesseract_ocr_processor()
         else:
             raise ValueError(f"Unsupported OCR backend: {self.backend}")
 

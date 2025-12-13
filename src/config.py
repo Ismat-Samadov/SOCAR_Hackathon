@@ -25,7 +25,7 @@ class Settings(BaseSettings):
     api_port: int = 8000
 
     # OCR Settings
-    ocr_backend: str = "azure"  # Options: azure, paddle, easy, tesseract
+    ocr_backend: str = "tesseract"  # Options: azure, paddle, easy, tesseract
 
     # LLM Settings
     llm_model: str = "gpt-4o"  # Model deployment name (gpt-4o, gpt-35-turbo, deepseek-chat, etc.)
