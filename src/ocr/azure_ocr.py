@@ -3,12 +3,11 @@
 from typing import List, Dict
 from pathlib import Path
 import io
-import base64
 from loguru import logger
 
 from azure.ai.formrecognizer import DocumentAnalysisClient
 from azure.core.credentials import AzureKeyCredential
-import fitz  # PyMuPDF for image extraction
+import fitz  # PyMuPDF for image detection
 
 from src.config import settings
 
@@ -26,6 +25,7 @@ class AzureOCRProcessor:
         self.client = DocumentAnalysisClient(
             endpoint=endpoint, credential=AzureKeyCredential(api_key)
         )
+
         logger.info("Initialized Azure Document Analysis client")
 
     def process_pdf(self, pdf_file: bytes, pdf_name: str = "document.pdf") -> List[Dict[str, any]]:
@@ -48,8 +48,9 @@ class AzureOCRProcessor:
             )
             result = poller.result()
 
-            # Extract images with metadata using PyMuPDF
-            images_by_page = self._extract_images_from_pdf(pdf_file)
+            # Detect images using PyMuPDF (don't save, just mention)
+            doc_name = Path(pdf_name).stem  # Get filename without extension
+            images_by_page = self._detect_images(pdf_file, doc_name)
 
             # Extract text page by page
             pages_data = []
@@ -63,21 +64,17 @@ class AzureOCRProcessor:
 
                 page_text = "\n".join(lines) if lines else ""
 
-                # Get images for this page and embed them inline
+                # Get image references for this page
                 page_images = images_by_page.get(page_num - 1, [])  # 0-indexed
 
-                # Embed images inline in markdown text
+                # Only add image markdown if images exist
                 if page_images:
-                    for img_idx, img_data in enumerate(page_images, start=1):
-                        # Determine image format from base64 header
-                        img_format = img_data.get("format", "png")
-                        img_base64 = img_data.get("base64", "")
-
-                        # Create markdown image with data URI
-                        md_image = f'\n\n![Image {img_idx}](data:image/{img_format};base64,{img_base64})\n\n'
+                    for img_ref in page_images:
+                        # Create markdown image mention (no actual file)
+                        md_image = f'\n\n![Image]({img_ref})\n\n'
                         page_text += md_image
 
-                    logger.info(f"Embedded {len(page_images)} images inline for page {page_num}")
+                    logger.info(f"Added {len(page_images)} image references for page {page_num}")
 
                 pages_data.append({
                     "page_number": page_num,
@@ -91,15 +88,16 @@ class AzureOCRProcessor:
             logger.error(f"Error processing PDF with Azure: {e}")
             raise
 
-    def _extract_images_from_pdf(self, pdf_file: bytes) -> Dict[int, List[Dict[str, str]]]:
+    def _detect_images(self, pdf_file: bytes, doc_name: str) -> Dict[int, List[str]]:
         """
-        Extract images from PDF using PyMuPDF
+        Detect images in PDF (don't save, just mention their presence)
 
         Args:
             pdf_file: PDF file as bytes
+            doc_name: Document name (without extension)
 
         Returns:
-            Dict mapping page_number (0-indexed) to list of image dicts with format and base64
+            Dict mapping page_number (0-indexed) to list of image references
         """
         images_by_page = {}
 
@@ -109,37 +107,26 @@ class AzureOCRProcessor:
 
             for page_num in range(len(pdf_document)):
                 page = pdf_document[page_num]
-                images = []
+                image_refs = []
 
                 # Get images from page
                 image_list = page.get_images()
 
-                for img_index, img in enumerate(image_list):
-                    xref = img[0]
-                    base_image = pdf_document.extract_image(xref)
-                    image_bytes = base_image["image"]
+                # Only process if images exist on this page
+                if image_list:
+                    for img_index, img in enumerate(image_list):
+                        # Create simple reference: document_page_X_image_Y
+                        img_ref = f"{doc_name}_page_{page_num + 1}_image_{img_index + 1}"
+                        image_refs.append(img_ref)
 
-                    # Determine image format (png, jpeg, etc.)
-                    img_ext = base_image.get("ext", "png")
-                    # Normalize format names (jpeg vs jpg)
-                    img_format = "jpeg" if img_ext in ["jpg", "jpeg"] else img_ext
-
-                    # Convert to base64
-                    image_base64 = base64.b64encode(image_bytes).decode('utf-8')
-
-                    images.append({
-                        "format": img_format,
-                        "base64": image_base64
-                    })
-
-                if images:
-                    images_by_page[page_num] = images
-                    logger.info(f"Extracted {len(images)} images from page {page_num + 1}")
+                    if image_refs:
+                        images_by_page[page_num] = image_refs
+                        logger.info(f"Detected {len(image_refs)} images on page {page_num + 1}")
 
             pdf_document.close()
 
         except Exception as e:
-            logger.warning(f"Could not extract images: {e}")
+            logger.warning(f"Could not detect images: {e}")
 
         return images_by_page
 
