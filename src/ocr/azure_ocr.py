@@ -37,7 +37,7 @@ class AzureOCRProcessor:
             pdf_name: Name of the PDF file (for logging)
 
         Returns:
-            List of dicts with page_number, MD_text, and images (base64)
+            List of dicts with page_number and MD_text (with inline images)
         """
         try:
             logger.info(f"Processing PDF ({len(pdf_file)} bytes)")
@@ -48,7 +48,7 @@ class AzureOCRProcessor:
             )
             result = poller.result()
 
-            # Extract images using PyMuPDF
+            # Extract images with metadata using PyMuPDF
             images_by_page = self._extract_images_from_pdf(pdf_file)
 
             # Extract text page by page
@@ -63,13 +63,25 @@ class AzureOCRProcessor:
 
                 page_text = "\n".join(lines) if lines else ""
 
-                # Get images for this page
+                # Get images for this page and embed them inline
                 page_images = images_by_page.get(page_num - 1, [])  # 0-indexed
+
+                # Embed images inline in markdown text
+                if page_images:
+                    for img_idx, img_data in enumerate(page_images, start=1):
+                        # Determine image format from base64 header
+                        img_format = img_data.get("format", "png")
+                        img_base64 = img_data.get("base64", "")
+
+                        # Create markdown image with data URI
+                        md_image = f'\n\n![Image {img_idx}](data:image/{img_format};base64,{img_base64})\n\n'
+                        page_text += md_image
+
+                    logger.info(f"Embedded {len(page_images)} images inline for page {page_num}")
 
                 pages_data.append({
                     "page_number": page_num,
-                    "MD_text": page_text,
-                    "images": page_images  # List of base64 encoded images
+                    "MD_text": page_text
                 })
 
             logger.info(f"Successfully processed {len(pages_data)} pages")
@@ -79,7 +91,7 @@ class AzureOCRProcessor:
             logger.error(f"Error processing PDF with Azure: {e}")
             raise
 
-    def _extract_images_from_pdf(self, pdf_file: bytes) -> Dict[int, List[str]]:
+    def _extract_images_from_pdf(self, pdf_file: bytes) -> Dict[int, List[Dict[str, str]]]:
         """
         Extract images from PDF using PyMuPDF
 
@@ -87,7 +99,7 @@ class AzureOCRProcessor:
             pdf_file: PDF file as bytes
 
         Returns:
-            Dict mapping page_number (0-indexed) to list of base64 encoded images
+            Dict mapping page_number (0-indexed) to list of image dicts with format and base64
         """
         images_by_page = {}
 
@@ -107,9 +119,18 @@ class AzureOCRProcessor:
                     base_image = pdf_document.extract_image(xref)
                     image_bytes = base_image["image"]
 
+                    # Determine image format (png, jpeg, etc.)
+                    img_ext = base_image.get("ext", "png")
+                    # Normalize format names (jpeg vs jpg)
+                    img_format = "jpeg" if img_ext in ["jpg", "jpeg"] else img_ext
+
                     # Convert to base64
                     image_base64 = base64.b64encode(image_bytes).decode('utf-8')
-                    images.append(image_base64)
+
+                    images.append({
+                        "format": img_format,
+                        "base64": image_base64
+                    })
 
                 if images:
                     images_by_page[page_num] = images

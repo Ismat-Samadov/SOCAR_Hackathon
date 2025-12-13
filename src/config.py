@@ -28,7 +28,7 @@ class Settings(BaseSettings):
     ocr_backend: str = "azure"  # Azure Document Intelligence (92.79% CSR)
 
     # LLM Settings
-    llm_model: str = "gpt-4o"  # Model deployment name (gpt-4o, gpt-35-turbo, deepseek-chat, etc.)
+    llm_model: str = "o1"  # Latest GPT model (o1, gpt-4o, etc.)
 
     # Pinecone Settings
     pinecone_api_key: str = ""
