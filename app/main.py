@@ -114,20 +114,25 @@ def get_embedding(text: str) -> List[float]:
     """
     Get embedding using Azure OpenAI API instead of local model.
     This saves ~400MB memory by not loading SentenceTransformer locally.
+
+    Uses text-embedding-3-small with dimensions=1024 to match existing Pinecone index
+    (which was created with BAAI/bge-large-en-v1.5 at 1024 dimensions).
     """
     client = get_azure_client()
-    embedding_model = os.getenv("AZURE_EMBEDDING_MODEL", "text-embedding-ada-002")
+    embedding_model = os.getenv("AZURE_EMBEDDING_MODEL", "text-embedding-3-small")
+    embedding_dims = int(os.getenv("AZURE_EMBEDDING_DIMS", "1024"))
 
     try:
         response = client.embeddings.create(
             input=text,
-            model=embedding_model
+            model=embedding_model,
+            dimensions=embedding_dims  # Match Pinecone index dimensions
         )
         return response.data[0].embedding
     except Exception as e:
         # Fallback: return zero vector if embedding fails
         print(f"Embedding error: {e}")
-        return [0.0] * 1536  # ada-002 returns 1536 dimensions
+        return [0.0] * embedding_dims
 
 
 # Request/Response models
