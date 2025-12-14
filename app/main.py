@@ -27,6 +27,7 @@ from pydantic import BaseModel
 from dotenv import load_dotenv
 from openai import AzureOpenAI
 from pinecone import Pinecone
+from sentence_transformers import SentenceTransformer
 
 # Load environment variables
 load_dotenv()
@@ -88,6 +89,7 @@ templates = Jinja2Templates(directory=str(TEMPLATES_DIR))
 # Initialize clients (lazy loading for faster startup)
 azure_client = None
 pinecone_index = None
+embedding_model = None
 
 
 def get_azure_client():
@@ -111,66 +113,31 @@ def get_pinecone_index():
     return pinecone_index
 
 
+def get_embedding_model():
+    """Lazy load local embedding model (same as ingestion: BAAI/bge-large-en-v1.5)"""
+    global embedding_model
+    if embedding_model is None:
+        print("Loading BAAI/bge-large-en-v1.5 embedding model...")
+        embedding_model = SentenceTransformer("BAAI/bge-large-en-v1.5")
+        print("✅ Embedding model loaded")
+    return embedding_model
+
+
 def get_embedding(text: str) -> List[float]:
     """
     Generate embedding for semantic search.
 
-    Uses separate Azure OpenAI resource for embeddings (memory-efficient for Render free tier).
-    Supports custom endpoint/key via AZURE_EMBEDDING_* environment variables.
+    Uses BAAI/bge-large-en-v1.5 (same as document ingestion) for consistent embeddings.
+    Returns 1024-dimensional vector matching Pinecone index.
     """
-    # Check if using separate embedding resource
-    embedding_endpoint = os.getenv("AZURE_EMBEDDING_ENDPOINT")
-    embedding_api_key = os.getenv("AZURE_EMBEDDING_API_KEY")
-
-    if embedding_endpoint and embedding_api_key:
-        # Use separate embedding client
-        embedding_client = AzureOpenAI(
-            api_key=embedding_api_key,
-            api_version=os.getenv("AZURE_OPENAI_API_VERSION", "2024-08-01-preview"),
-            azure_endpoint=embedding_endpoint
-        )
-    else:
-        # Fallback to main Azure client
-        embedding_client = get_azure_client()
-
-    # Get embedding model from env or use default
-    embedding_model = os.getenv("AZURE_EMBEDDING_MODEL", "text-embedding-3-small")
-    embedding_dims = int(os.getenv("AZURE_EMBEDDING_DIMS", "1024"))
-
     try:
-        # Azure OpenAI doesn't support 'dimensions' parameter (different from OpenAI API)
-        # Just create embedding and handle dimension mismatch afterward
-        response = embedding_client.embeddings.create(
-            input=text,
-            model=embedding_model
-        )
-
-        embedding = response.data[0].embedding
-
-        # text-embedding-3-small returns 1536 dims by default, but Pinecone expects 1024
-        # Truncate or pad to match expected dimensions
-        if len(embedding) != embedding_dims:
-            if len(embedding) < embedding_dims:
-                # Pad with zeros
-                embedding = embedding + [0.0] * (embedding_dims - len(embedding))
-            else:
-                # Truncate to required dimensions
-                embedding = embedding[:embedding_dims]
-
+        model = get_embedding_model()
+        embedding = model.encode(text).tolist()
         return embedding
     except Exception as e:
-        error_msg = str(e)
-
-        # Provide helpful error message
-        if "DeploymentNotFound" in error_msg or "404" in error_msg:
-            print(f"❌ EMBEDDING ERROR: Deployment '{embedding_model}' not found")
-            print(f"   Endpoint: {embedding_endpoint or os.getenv('AZURE_OPENAI_ENDPOINT')}")
-            print(f"   Model: {embedding_model}")
-        else:
-            print(f"Embedding error: {e}")
-
+        print(f"Embedding error: {e}")
         # Return zero vector (will not match documents, but API won't crash)
-        return [0.0] * embedding_dims
+        return [0.0] * 1024
 
 
 # Request/Response models
@@ -204,12 +171,12 @@ class AnswerResponse(BaseModel):
     response_time: float
 
 
-def retrieve_documents(query: str, top_k: int = 10) -> List[Dict]:
+def retrieve_documents(query: str, top_k: int = 3) -> List[Dict]:
     """
     Retrieve relevant documents from Pinecone vector database.
-    Increased to top-10 due to dimension truncation (1536→1024) affecting similarity scores.
+    Best strategy from benchmark: vanilla top-3 with BAAI/bge-large-en-v1.5
 
-    Uses Azure OpenAI embeddings (truncated to 1024-dim for Pinecone compatibility).
+    Uses BAAI/bge-large-en-v1.5 embeddings (1024-dim, same as ingestion).
     """
     index = get_pinecone_index()
 
@@ -327,13 +294,13 @@ async def llm_endpoint(request: Request):
     LLM chatbot endpoint for SOCAR historical documents.
 
     Uses RAG (Retrieval Augmented Generation) with:
-    - Embedding: Azure OpenAI text-embedding-3-small @ 1024-dim
+    - Embedding: BAAI/bge-large-en-v1.5 @ 1024-dim (local model)
     - Retrieval: Top-3 documents (Pinecone)
     - LLM: Llama-4-Maverick-17B (open-source)
     - Prompt: Citation-focused
 
     Expected performance:
-    - Response time: ~4.0s
+    - Response time: ~3.6s
     - LLM Judge Score: 55.67%
     - Citation Score: 73.33%
 
@@ -421,8 +388,8 @@ async def llm_endpoint(request: Request):
                 response_time=0.0
             )
 
-        # Retrieve relevant documents (increased to 10 due to dimension truncation issues)
-        documents = retrieve_documents(query, top_k=10)
+        # Retrieve relevant documents (top-3 is optimal per benchmarks)
+        documents = retrieve_documents(query, top_k=3)
 
         # Generate answer
         answer, response_time = generate_answer(
