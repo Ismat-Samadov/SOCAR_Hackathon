@@ -33,3 +33,4 @@ venv/
 env/
 ENV/
 data/hackathon_data
+docs/beatbyteai_id_rsa
