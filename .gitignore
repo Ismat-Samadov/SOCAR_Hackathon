@@ -34,3 +34,15 @@ env/
 ENV/
 data/hackathon_data
 docs/beatbyteai_id_rsa
+
+# SSL Certificates (never commit actual certs)
+nginx/ssl/*.pem
+nginx/ssl/*.crt
+nginx/ssl/*.key
+nginx/ssl/live/
+nginx/ssl/archive/
+!nginx/ssl/.gitkeep
+
+# Certbot data
+certbot/conf/
+!certbot/www/.gitkeep
