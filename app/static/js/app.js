@@ -65,8 +65,53 @@ async function handleOCRUpload() {
         return;
     }
 
-    // Show loading
-    resultArea.innerHTML = '<div class="loading">Processing PDF with Llama-4-Maverick VLM</div>';
+    // Show animated loading
+    resultArea.innerHTML = `
+        <div class="loading-animated">
+            <div class="loading-spinner"></div>
+            <div class="loading-status">Preparing PDF for processing...</div>
+            <div class="loading-progress">
+                <div class="progress-bar"></div>
+            </div>
+            <div class="ocr-stats">
+                <div class="stat-item">
+                    <span class="stat-icon">📄</span>
+                    <span class="stat-label">Model: Llama-4-Maverick-17B</span>
+                </div>
+                <div class="stat-item">
+                    <span class="stat-icon">🎯</span>
+                    <span class="stat-label">Accuracy: 88.3% CSR</span>
+                </div>
+                <div class="stat-item">
+                    <span class="stat-icon">🌍</span>
+                    <span class="stat-label">Languages: AZ, RU, EN</span>
+                </div>
+            </div>
+        </div>
+    `;
+
+    // Animated OCR status updates
+    const ocrStatuses = [
+        '📄 Converting PDF to images...',
+        '🔍 Analyzing document layout...',
+        '🤖 Running Vision-Language Model...',
+        '📝 Extracting text with 88.3% accuracy...',
+        '🔤 Preserving Cyrillic and Latin characters...',
+        '🖼️ Detecting embedded images...',
+        '✨ Finalizing OCR results...'
+    ];
+
+    let ocrStatusIndex = 0;
+    const statusElement = resultArea.querySelector('.loading-status');
+    const progressBar = resultArea.querySelector('.progress-bar');
+
+    const ocrStatusInterval = setInterval(() => {
+        if (ocrStatusIndex < ocrStatuses.length) {
+            statusElement.textContent = ocrStatuses[ocrStatusIndex];
+            progressBar.style.width = `${((ocrStatusIndex + 1) / ocrStatuses.length) * 100}%`;
+            ocrStatusIndex++;
+        }
+    }, 1500);
 
     try {
         const formData = new FormData();
@@ -76,6 +121,8 @@ async function handleOCRUpload() {
             method: 'POST',
             body: formData
         });
+
+        clearInterval(ocrStatusInterval);
 
         if (!response.ok) {
             throw new Error(`HTTP error! status: ${response.status}`);
@@ -101,6 +148,7 @@ async function handleOCRUpload() {
         resultArea.innerHTML = html;
 
     } catch (error) {
+        clearInterval(ocrStatusInterval);
         resultArea.innerHTML = `<div class="error">Error processing PDF: ${error.message}</div>`;
         console.error('OCR Error:', error);
     }
@@ -125,14 +173,42 @@ async function askQuestion() {
     // Clear input
     questionInput.value = '';
 
-    // Show loading
+    // Show animated loading with status updates
     const loadingDiv = document.createElement('div');
-    loadingDiv.className = 'message bot-message loading';
-    loadingDiv.textContent = 'Searching documents and generating answer';
+    loadingDiv.className = 'message bot-message loading-animated';
+    loadingDiv.innerHTML = `
+        <div class="loading-spinner"></div>
+        <div class="loading-status">Initializing AI systems...</div>
+        <div class="loading-progress">
+            <div class="progress-bar"></div>
+        </div>
+    `;
     chatMessages.appendChild(loadingDiv);
 
     // Scroll to bottom
     chatMessages.scrollTop = chatMessages.scrollHeight;
+
+    // Animated status updates
+    const statusMessages = [
+        '🔍 Searching 1,128 vectors across 28 historical documents...',
+        '🧠 Embedding your question with BAAI/bge-large-en-v1.5...',
+        '📊 Retrieving top-3 most relevant document chunks...',
+        '🤖 Generating answer with Llama-4-Maverick-17B...',
+        '📝 Adding citations from source documents...',
+        '✨ Finalizing response...'
+    ];
+
+    let statusIndex = 0;
+    const statusElement = loadingDiv.querySelector('.loading-status');
+    const progressBar = loadingDiv.querySelector('.progress-bar');
+
+    const statusInterval = setInterval(() => {
+        if (statusIndex < statusMessages.length) {
+            statusElement.textContent = statusMessages[statusIndex];
+            progressBar.style.width = `${((statusIndex + 1) / statusMessages.length) * 100}%`;
+            statusIndex++;
+        }
+    }, 1200);
 
     try {
         const response = await fetch('/llm', {
@@ -149,7 +225,8 @@ async function askQuestion() {
 
         const data = await response.json();
 
-        // Remove loading
+        // Clear status interval and remove loading
+        clearInterval(statusInterval);
         chatMessages.removeChild(loadingDiv);
 
         // Add bot response
@@ -174,7 +251,8 @@ async function askQuestion() {
         chatMessages.scrollTop = chatMessages.scrollHeight;
 
     } catch (error) {
-        // Remove loading
+        // Clear status interval and remove loading
+        clearInterval(statusInterval);
         chatMessages.removeChild(loadingDiv);
 
         // Add error message

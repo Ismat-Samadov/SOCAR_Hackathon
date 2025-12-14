@@ -136,9 +136,13 @@ def retrieve_documents(query: str, top_k: int = 3) -> List[Dict]:
     # Extract documents
     documents = []
     for match in results['matches']:
+        # Ensure page_number is always an integer (Pinecone may return float)
+        page_num = match['metadata'].get('page_number', 0)
+        page_num = int(page_num) if isinstance(page_num, (int, float)) else 0
+
         documents.append({
             'pdf_name': match['metadata'].get('pdf_name', 'unknown.pdf'),
-            'page_number': match['metadata'].get('page_number', 0),
+            'page_number': page_num,
             'content': match['metadata'].get('text', ''),
             'score': match.get('score', 0.0)
         })
@@ -174,7 +178,7 @@ Sual: {query}
 
 Cavab verərkən:
 1. Dəqiq faktlar yazın
-2. Hər faktı mənbə ilə göstərin: (PDF: fayl_adı.pdf, Səhifə: X)
+2. Hər faktı mənbə ilə göstərin: (PDF: fayl_adı.pdf, Səhifə: X) - səhifə nömrəsini tam ədəd (integer) olaraq yazın, məsələn "Səhifə: 11" (11.0 yox)
 3. Kontekstdə olmayan məlumat əlavə etməyin"""
 
     try:
@@ -228,7 +232,7 @@ async def health():
 
 
 @app.post("/llm")
-async def llm_endpoint(request: QuestionRequest | ChatRequest):
+async def llm_endpoint(request: Request):
     """
     LLM chatbot endpoint for SOCAR historical documents.
 
@@ -248,23 +252,32 @@ async def llm_endpoint(request: QuestionRequest | ChatRequest):
     2. ChatRequest: {"messages": [{"role": "user", "content": "..."}], ...}
     """
     try:
-        # Handle both request formats
-        if isinstance(request, QuestionRequest):
-            query = request.question
-            temperature = request.temperature
-            max_tokens = request.max_tokens
-        else:  # ChatRequest
-            # Extract the user's question (last message)
-            if not request.messages:
+        # Parse request body
+        body = await request.json()
+
+        # Determine request format and extract query
+        if "question" in body:
+            # QuestionRequest format
+            query = body.get("question")
+            temperature = body.get("temperature", 0.2)
+            max_tokens = body.get("max_tokens", 1000)
+            is_simple_format = True
+        elif "messages" in body:
+            # ChatRequest format
+            messages = body.get("messages", [])
+            if not messages:
                 raise HTTPException(status_code=400, detail="No messages provided")
 
-            user_messages = [msg for msg in request.messages if msg.role == "user"]
+            user_messages = [msg for msg in messages if msg.get("role") == "user"]
             if not user_messages:
                 raise HTTPException(status_code=400, detail="No user message found")
 
-            query = user_messages[-1].content
-            temperature = request.temperature
-            max_tokens = request.max_tokens
+            query = user_messages[-1].get("content")
+            temperature = body.get("temperature", 0.2)
+            max_tokens = body.get("max_tokens", 1000)
+            is_simple_format = False
+        else:
+            raise HTTPException(status_code=400, detail="Invalid request format. Expected 'question' or 'messages' field.")
 
         # Retrieve relevant documents
         documents = retrieve_documents(query, top_k=3)
@@ -288,7 +301,7 @@ async def llm_endpoint(request: QuestionRequest | ChatRequest):
         ]
 
         # Return appropriate response format
-        if isinstance(request, QuestionRequest):
+        if is_simple_format:
             return AnswerResponse(
                 answer=answer,
                 sources=sources,

@@ -1,11 +1,11 @@
 version: '3.8'
 
 services:
-  llm-api:
+  socar-ai-system:
     build:
       context: .
       dockerfile: Dockerfile
-    container_name: socar-llm-api
+    container_name: socar-ai-system
     ports:
       - "8000:8000"
     env_file:
@@ -24,6 +24,10 @@ services:
       start_period: 40s
     networks:
       - socar-network
+    labels:
+      - "com.socar.description=SOCAR Historical Documents AI System"
+      - "com.socar.features=OCR,LLM,Frontend"
+      - "com.socar.version=1.0.0"
 
 networks:
   socar-network:
