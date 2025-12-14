@@ -1,0 +1,2 @@
+# Certbot webroot directory for ACME challenges
+# This directory is used by Let's Encrypt for domain validation

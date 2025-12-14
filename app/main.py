@@ -17,8 +17,11 @@ import fitz  # PyMuPDF
 from PIL import Image
 from fastapi import FastAPI, HTTPException, File, UploadFile, Request
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.middleware.trustedhost import TrustedHostMiddleware
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
+from fastapi.responses import Response
+from starlette.middleware.base import BaseHTTPMiddleware
 from pydantic import BaseModel
 from dotenv import load_dotenv
 from openai import AzureOpenAI
@@ -35,13 +38,42 @@ app = FastAPI(
     version="1.0.0"
 )
 
-# CORS middleware
+# Security Headers Middleware for production
+class SecurityHeadersMiddleware(BaseHTTPMiddleware):
+    """Add security headers to all responses for production deployment."""
+
+    async def dispatch(self, request: Request, call_next):
+        response = await call_next(request)
+
+        # Only add security headers in production (when HTTPS is enabled)
+        if os.getenv("PRODUCTION", "false").lower() == "true":
+            response.headers["Strict-Transport-Security"] = "max-age=63072000; includeSubDomains; preload"
+            response.headers["X-Content-Type-Options"] = "nosniff"
+            response.headers["X-Frame-Options"] = "SAMEORIGIN"
+            response.headers["X-XSS-Protection"] = "1; mode=block"
+            response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
+            response.headers["Permissions-Policy"] = "geolocation=(), microphone=(), camera=()"
+
+        return response
+
+# Add security headers middleware
+app.add_middleware(SecurityHeadersMiddleware)
+
+# Trusted Host Middleware for production (prevents host header attacks)
+trusted_hosts = os.getenv("TRUSTED_HOSTS", "*").split(",")
+if trusted_hosts != ["*"]:
+    app.add_middleware(TrustedHostMiddleware, allowed_hosts=trusted_hosts)
+
+# CORS middleware - configurable for production
+# In production, set ALLOWED_ORIGINS environment variable to your domain(s)
+# Example: ALLOWED_ORIGINS=https://yourdomain.com,https://www.yourdomain.com
+allowed_origins = os.getenv("ALLOWED_ORIGINS", "*").split(",")
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=allowed_origins if allowed_origins != ["*"] else ["*"],
     allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
+    allow_methods=["GET", "POST", "OPTIONS"],
+    allow_headers=["Content-Type", "Authorization", "X-Requested-With"],
 )
 
 # Mount static files and templates
