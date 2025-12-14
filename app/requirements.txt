@@ -12,9 +12,10 @@ openai==1.54.0
 # Vector database
 pinecone-client==5.0.0
 
-# Embeddings
+# Embeddings - Updated for compatibility
 sentence-transformers==3.3.1
-torch==2.1.2
+torch==2.5.1
+numpy<2.0.0
 
 # Utilities
 python-dotenv==1.0.0
