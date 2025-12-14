@@ -1,8 +1,9 @@
-# SOCAR Hackathon - LLM Endpoint Dockerfile
+# SOCAR Hackathon - Complete AI System Dockerfile
 # Multi-stage build for optimized image size
+# Includes OCR, LLM, and frontend capabilities
 
 # Stage 1: Builder
-FROM python:3.10-slim as builder
+FROM python:3.11-slim as builder
 
 WORKDIR /app
 
@@ -16,7 +17,7 @@ COPY app/requirements.txt .
 RUN pip install --no-cache-dir --user -r requirements.txt
 
 # Stage 2: Runtime
-FROM python:3.10-slim
+FROM python:3.11-slim
 
 WORKDIR /app
 
@@ -30,7 +31,6 @@ COPY --from=builder /root/.local /root/.local
 
 # Copy application code
 COPY app/ ./app/
-COPY .env.example .env
 
 # Add local bin to PATH
 ENV PATH=/root/.local/bin:$PATH

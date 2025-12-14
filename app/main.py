@@ -15,8 +15,10 @@ from io import BytesIO
 
 import fitz  # PyMuPDF
 from PIL import Image
-from fastapi import FastAPI, HTTPException, File, UploadFile
+from fastapi import FastAPI, HTTPException, File, UploadFile, Request
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
+from fastapi.templating import Jinja2Templates
 from pydantic import BaseModel
 from dotenv import load_dotenv
 from openai import AzureOpenAI
@@ -28,8 +30,8 @@ load_dotenv()
 
 # Initialize FastAPI app
 app = FastAPI(
-    title="SOCAR Historical Documents Chatbot",
-    description="RAG-based chatbot for SOCAR oil & gas historical documents",
+    title="SOCAR Historical Documents AI System",
+    description="RAG-based chatbot for SOCAR oil & gas historical documents with OCR capabilities",
     version="1.0.0"
 )
 
@@ -41,6 +43,10 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# Mount static files and templates
+app.mount("/static", StaticFiles(directory="app/static"), name="static")
+templates = Jinja2Templates(directory="app/templates")
 
 # Initialize clients (lazy loading for faster startup)
 azure_client = None
@@ -95,6 +101,18 @@ class ChatResponse(BaseModel):
     sources: List[Dict[str, str]]
     response_time: float
     model: str
+
+
+class QuestionRequest(BaseModel):
+    question: str
+    temperature: float = 0.2
+    max_tokens: int = 1000
+
+
+class AnswerResponse(BaseModel):
+    answer: str
+    sources: List[Dict]
+    response_time: float
 
 
 def retrieve_documents(query: str, top_k: int = 3) -> List[Dict]:
@@ -180,20 +198,9 @@ Cavab verərkən:
 
 
 @app.get("/")
-async def root():
-    """Health check endpoint"""
-    return {
-        "status": "healthy",
-        "service": "SOCAR LLM Chatbot",
-        "version": "1.0.0",
-        "model": "Llama-4-Maverick-17B (open-source)",
-        "configuration": {
-            "embedding": "BAAI/bge-large-en-v1.5",
-            "retrieval": "top-3 vanilla",
-            "prompt": "citation_focused",
-            "benchmark_score": "55.67%"
-        }
-    }
+async def root(request: Request):
+    """Serve the frontend web application"""
+    return templates.TemplateResponse("index.html", {"request": request})
 
 
 @app.get("/health")
@@ -220,8 +227,8 @@ async def health():
         }
 
 
-@app.post("/llm", response_model=ChatResponse)
-async def llm_endpoint(request: ChatRequest):
+@app.post("/llm")
+async def llm_endpoint(request: QuestionRequest | ChatRequest):
     """
     LLM chatbot endpoint for SOCAR historical documents.
 
@@ -235,17 +242,29 @@ async def llm_endpoint(request: ChatRequest):
     - Response time: ~3.6s
     - LLM Judge Score: 55.67%
     - Citation Score: 73.33%
+
+    Accepts two formats:
+    1. QuestionRequest: {"question": "...", "temperature": 0.2, "max_tokens": 1000}
+    2. ChatRequest: {"messages": [{"role": "user", "content": "..."}], ...}
     """
     try:
-        # Extract the user's question (last message)
-        if not request.messages:
-            raise HTTPException(status_code=400, detail="No messages provided")
+        # Handle both request formats
+        if isinstance(request, QuestionRequest):
+            query = request.question
+            temperature = request.temperature
+            max_tokens = request.max_tokens
+        else:  # ChatRequest
+            # Extract the user's question (last message)
+            if not request.messages:
+                raise HTTPException(status_code=400, detail="No messages provided")
 
-        user_messages = [msg for msg in request.messages if msg.role == "user"]
-        if not user_messages:
-            raise HTTPException(status_code=400, detail="No user message found")
+            user_messages = [msg for msg in request.messages if msg.role == "user"]
+            if not user_messages:
+                raise HTTPException(status_code=400, detail="No user message found")
 
-        query = user_messages[-1].content
+            query = user_messages[-1].content
+            temperature = request.temperature
+            max_tokens = request.max_tokens
 
         # Retrieve relevant documents
         documents = retrieve_documents(query, top_k=3)
@@ -254,26 +273,34 @@ async def llm_endpoint(request: ChatRequest):
         answer, response_time = generate_answer(
             query=query,
             documents=documents,
-            temperature=request.temperature,
-            max_tokens=request.max_tokens
+            temperature=temperature,
+            max_tokens=max_tokens
         )
 
-        # Format sources
+        # Format sources for response
         sources = [
             {
                 "pdf_name": doc['pdf_name'],
-                "page_number": str(doc['page_number']),
+                "page_number": doc['page_number'],
                 "relevance_score": f"{doc['score']:.3f}"
             }
             for doc in documents
         ]
 
-        return ChatResponse(
-            response=answer,
-            sources=sources,
-            response_time=round(response_time, 2),
-            model="Llama-4-Maverick-17B-128E-Instruct-FP8"
-        )
+        # Return appropriate response format
+        if isinstance(request, QuestionRequest):
+            return AnswerResponse(
+                answer=answer,
+                sources=sources,
+                response_time=round(response_time, 2)
+            )
+        else:
+            return ChatResponse(
+                response=answer,
+                sources=[{k: str(v) for k, v in s.items()} for s in sources],
+                response_time=round(response_time, 2),
+                model="Llama-4-Maverick-17B-128E-Instruct-FP8"
+            )
 
     except HTTPException:
         raise
