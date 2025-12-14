@@ -254,7 +254,7 @@ def ingest_pdf(pdf_path: str) -> Dict:
             "metadata": {
                 "pdf_name": pdf_name,
                 "page_number": estimated_page,
-                "text": chunk
+                "content": chunk  # Changed from "text" to "content" to match API expectations
             }
         })
 
