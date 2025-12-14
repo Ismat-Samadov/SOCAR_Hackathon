@@ -59,6 +59,34 @@ The SOCAR Historical Documents AI System is a sophisticated document intelligenc
 
 ---
 
+## Hackathon Results
+
+**Team BeatByte - 3rd Place**
+
+![Team Performance Results](docs/team_results.png)
+
+| Rank | Team Name | Total Score out of 300 | Total Score out of 500 | Total Presentation Score | Total Score |
+|------|-----------|------------------------|------------------------|--------------------------|-------------|
+| 1st | Neon_Tech | 259.661 | 404.35 | 186.6 | 850.61 |
+| 2nd | Triangle | 144.429 | 407.25 | 183.3 | 734.98 |
+| **3rd** | **BeatByte** | **141.154** | **366.86** | **186.6** | **694.61** |
+| 4th | DataDrill | 62.416 | 391.23 | 183.3 | 636.95 |
+
+**Our Performance**:
+- **LLM Track (out of 300)**: 141.154 points
+- **OCR Track (out of 500)**: 366.86 points
+- **Presentation Score**: 186.6 points
+- **Total Score**: 694.61 points
+
+**Key Highlights**:
+- Secured **3rd place** among all competing teams
+- Achieved highest presentation score (186.6) tied with Neon_Tech
+- Strong OCR performance with 366.86/500 points (73.37%)
+- Solid LLM implementation with 141.154/300 points (47.05%)
+- Comprehensive system architecture with production-ready deployment
+
+---
+
 ## Development Workflow & Methodology
 
 ### How We Built This System: From Problem to Solution
