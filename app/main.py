@@ -138,12 +138,26 @@ def get_embedding(text: str) -> List[float]:
     embedding_dims = int(os.getenv("AZURE_EMBEDDING_DIMS", "1024"))
 
     try:
+        # Azure OpenAI doesn't support 'dimensions' parameter (different from OpenAI API)
+        # Just create embedding and handle dimension mismatch afterward
         response = embedding_client.embeddings.create(
             input=text,
-            model=embedding_model,
-            dimensions=embedding_dims
+            model=embedding_model
         )
-        return response.data[0].embedding
+
+        embedding = response.data[0].embedding
+
+        # text-embedding-3-small returns 1536 dims by default, but Pinecone expects 1024
+        # Truncate or pad to match expected dimensions
+        if len(embedding) != embedding_dims:
+            if len(embedding) < embedding_dims:
+                # Pad with zeros
+                embedding = embedding + [0.0] * (embedding_dims - len(embedding))
+            else:
+                # Truncate to required dimensions
+                embedding = embedding[:embedding_dims]
+
+        return embedding
     except Exception as e:
         error_msg = str(e)
 
@@ -190,12 +204,12 @@ class AnswerResponse(BaseModel):
     response_time: float
 
 
-def retrieve_documents(query: str, top_k: int = 3) -> List[Dict]:
+def retrieve_documents(query: str, top_k: int = 10) -> List[Dict]:
     """
     Retrieve relevant documents from Pinecone vector database.
-    Best strategy from benchmark: vanilla top-3
+    Increased to top-10 due to dimension truncation (1536→1024) affecting similarity scores.
 
-    Uses Azure OpenAI embeddings (1024-dim) for memory efficiency on Render free tier.
+    Uses Azure OpenAI embeddings (truncated to 1024-dim for Pinecone compatibility).
     """
     index = get_pinecone_index()
 
@@ -407,8 +421,8 @@ async def llm_endpoint(request: Request):
                 response_time=0.0
             )
 
-        # Retrieve relevant documents
-        documents = retrieve_documents(query, top_k=3)
+        # Retrieve relevant documents (increased to 10 due to dimension truncation issues)
+        documents = retrieve_documents(query, top_k=10)
 
         # Generate answer
         answer, response_time = generate_answer(
