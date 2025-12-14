@@ -31,6 +31,9 @@ from sentence_transformers import SentenceTransformer
 # Load environment variables
 load_dotenv()
 
+# Get the directory where main.py is located for absolute path resolution
+BASE_DIR = Path(__file__).resolve().parent
+
 # Initialize FastAPI app
 app = FastAPI(
     title="SOCAR Historical Documents AI System",
@@ -76,9 +79,11 @@ app.add_middleware(
     allow_headers=["Content-Type", "Authorization", "X-Requested-With"],
 )
 
-# Mount static files and templates
-app.mount("/static", StaticFiles(directory="app/static"), name="static")
-templates = Jinja2Templates(directory="app/templates")
+# Mount static files and templates using absolute paths for production reliability
+STATIC_DIR = BASE_DIR / "static"
+TEMPLATES_DIR = BASE_DIR / "templates"
+app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
+templates = Jinja2Templates(directory=str(TEMPLATES_DIR))
 
 # Initialize clients (lazy loading for faster startup)
 azure_client = None
