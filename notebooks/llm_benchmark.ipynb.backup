@@ -576,7 +576,7 @@
    ]
   },
   {
-   "cell_type": "code",
+   "cell_type": "markdown",
    "metadata": {},
    "source": [
     "# Create comprehensive visualization\n",
@@ -708,7 +708,7 @@
    ]
   },
   {
-   "cell_type": "code",
+   "cell_type": "markdown",
    "metadata": {},
    "source": [
     "# Save results\n",
