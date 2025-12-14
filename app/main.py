@@ -26,7 +26,6 @@ from pydantic import BaseModel
 from dotenv import load_dotenv
 from openai import AzureOpenAI
 from pinecone import Pinecone
-from sentence_transformers import SentenceTransformer
 
 # Load environment variables
 load_dotenv()
@@ -88,7 +87,6 @@ templates = Jinja2Templates(directory=str(TEMPLATES_DIR))
 # Initialize clients (lazy loading for faster startup)
 azure_client = None
 pinecone_index = None
-embedding_model = None
 
 
 def get_azure_client():
@@ -112,13 +110,24 @@ def get_pinecone_index():
     return pinecone_index
 
 
-def get_embedding_model():
-    """Lazy load embedding model"""
-    global embedding_model
-    if embedding_model is None:
-        # Best performing model from benchmark
-        embedding_model = SentenceTransformer("BAAI/bge-large-en-v1.5")
-    return embedding_model
+def get_embedding(text: str) -> List[float]:
+    """
+    Get embedding using Azure OpenAI API instead of local model.
+    This saves ~400MB memory by not loading SentenceTransformer locally.
+    """
+    client = get_azure_client()
+    embedding_model = os.getenv("AZURE_EMBEDDING_MODEL", "text-embedding-ada-002")
+
+    try:
+        response = client.embeddings.create(
+            input=text,
+            model=embedding_model
+        )
+        return response.data[0].embedding
+    except Exception as e:
+        # Fallback: return zero vector if embedding fails
+        print(f"Embedding error: {e}")
+        return [0.0] * 1536  # ada-002 returns 1536 dimensions
 
 
 # Request/Response models
@@ -158,10 +167,9 @@ def retrieve_documents(query: str, top_k: int = 3) -> List[Dict]:
     Best strategy from benchmark: vanilla top-3
     """
     index = get_pinecone_index()
-    embed_model = get_embedding_model()
 
-    # Generate query embedding
-    query_embedding = embed_model.encode(query).tolist()
+    # Generate query embedding using Azure OpenAI (memory efficient)
+    query_embedding = get_embedding(query)
 
     # Search vector database
     results = index.query(
