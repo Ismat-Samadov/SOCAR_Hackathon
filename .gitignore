@@ -32,3 +32,4 @@ __pycache__
 venv/
 env/
 ENV/
+data/hackathon_data

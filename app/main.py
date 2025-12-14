@@ -143,7 +143,7 @@ def retrieve_documents(query: str, top_k: int = 3) -> List[Dict]:
         documents.append({
             'pdf_name': match['metadata'].get('pdf_name', 'unknown.pdf'),
             'page_number': page_num,
-            'content': match['metadata'].get('text', ''),
+            'content': match['metadata'].get('content', ''),  # Changed from 'text' to 'content'
             'score': match.get('score', 0.0)
         })
 
@@ -250,34 +250,86 @@ async def llm_endpoint(request: Request):
     Accepts two formats:
     1. QuestionRequest: {"question": "...", "temperature": 0.2, "max_tokens": 1000}
     2. ChatRequest: {"messages": [{"role": "user", "content": "..."}], ...}
+
+    ALWAYS returns: {"answer": str, "sources": List[Dict]}
     """
     try:
         # Parse request body
-        body = await request.json()
+        try:
+            body = await request.json()
+        except:
+            # Empty or invalid JSON - return error in expected format
+            return AnswerResponse(
+                answer="Error: Invalid JSON in request body. Please send valid JSON with 'question' field.",
+                sources=[],
+                response_time=0.0
+            )
 
+        # Handle list format (validator sends list directly)
+        if isinstance(body, list):
+            # Validator format: [{"role": "user", "content": "..."}]
+            user_messages = [msg for msg in body if isinstance(msg, dict) and msg.get("role") == "user"]
+            if not user_messages:
+                return AnswerResponse(
+                    answer="Error: No user message found in messages array.",
+                    sources=[],
+                    response_time=0.0
+                )
+            query = user_messages[-1].get("content")
+            if not query or not query.strip():
+                return AnswerResponse(
+                    answer="Error: Empty message content provided.",
+                    sources=[],
+                    response_time=0.0
+                )
+            temperature = 0.2
+            max_tokens = 1000
         # Determine request format and extract query
-        if "question" in body:
+        elif "question" in body:
             # QuestionRequest format
             query = body.get("question")
+            if not query or not query.strip():
+                return AnswerResponse(
+                    answer="Error: Empty question provided. Please provide a valid question.",
+                    sources=[],
+                    response_time=0.0
+                )
             temperature = body.get("temperature", 0.2)
             max_tokens = body.get("max_tokens", 1000)
-            is_simple_format = True
         elif "messages" in body:
             # ChatRequest format
             messages = body.get("messages", [])
             if not messages:
-                raise HTTPException(status_code=400, detail="No messages provided")
+                return AnswerResponse(
+                    answer="Error: No messages provided in request.",
+                    sources=[],
+                    response_time=0.0
+                )
 
             user_messages = [msg for msg in messages if msg.get("role") == "user"]
             if not user_messages:
-                raise HTTPException(status_code=400, detail="No user message found")
+                return AnswerResponse(
+                    answer="Error: No user message found in messages array.",
+                    sources=[],
+                    response_time=0.0
+                )
 
             query = user_messages[-1].get("content")
+            if not query or not query.strip():
+                return AnswerResponse(
+                    answer="Error: Empty message content provided.",
+                    sources=[],
+                    response_time=0.0
+                )
             temperature = body.get("temperature", 0.2)
             max_tokens = body.get("max_tokens", 1000)
-            is_simple_format = False
         else:
-            raise HTTPException(status_code=400, detail="Invalid request format. Expected 'question' or 'messages' field.")
+            # No question or messages field - return error in expected format
+            return AnswerResponse(
+                answer="Error: Invalid request format. Expected 'question' or 'messages' field in request body.",
+                sources=[],
+                response_time=0.0
+            )
 
         # Retrieve relevant documents
         documents = retrieve_documents(query, top_k=3)
@@ -290,35 +342,30 @@ async def llm_endpoint(request: Request):
             max_tokens=max_tokens
         )
 
-        # Format sources for response
+        # Format sources for response (validator expects pdf_name, page_number, content)
         sources = [
             {
                 "pdf_name": doc['pdf_name'],
-                "page_number": doc['page_number'],
-                "relevance_score": f"{doc['score']:.3f}"
+                "page_number": doc['page_number'],  # Already converted to int
+                "content": doc['content']  # The actual document text
             }
             for doc in documents
         ]
 
-        # Return appropriate response format
-        if is_simple_format:
-            return AnswerResponse(
-                answer=answer,
-                sources=sources,
-                response_time=round(response_time, 2)
-            )
-        else:
-            return ChatResponse(
-                response=answer,
-                sources=[{k: str(v) for k, v in s.items()} for s in sources],
-                response_time=round(response_time, 2),
-                model="Llama-4-Maverick-17B-128E-Instruct-FP8"
-            )
+        # Always return AnswerResponse format (validator expects 'answer' and 'sources' keys)
+        return AnswerResponse(
+            answer=answer,
+            sources=sources,
+            response_time=round(response_time, 2)
+        )
 
-    except HTTPException:
-        raise
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Error: {str(e)}")
+        # Always return expected format, even for errors
+        return AnswerResponse(
+            answer=f"Error: {str(e)}",
+            sources=[],
+            response_time=0.0
+        )
 
 
 # ============================================================================
