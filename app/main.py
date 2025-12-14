@@ -9,6 +9,7 @@ import os
 import re
 import time
 import base64
+import gc
 from typing import List, Dict
 from pathlib import Path
 from io import BytesIO
@@ -452,45 +453,39 @@ class OCRPageResponse(BaseModel):
     MD_text: str
 
 
-def pdf_to_images(pdf_bytes: bytes, dpi: int = 100) -> List[Image.Image]:
-    """Convert PDF bytes to PIL Images."""
-    doc = fitz.open(stream=pdf_bytes, filetype="pdf")
-    images = []
+def process_pdf_page(pdf_bytes: bytes, page_num: int, dpi: int = 100) -> tuple[str, int]:
+    """
+    Process a single PDF page for OCR (memory efficient).
 
-    for page_num in range(len(doc)):
-        page = doc[page_num]
-        zoom = dpi / 72
-        mat = fitz.Matrix(zoom, zoom)
-        pix = page.get_pixmap(matrix=mat)
-        img = Image.frombytes("RGB", [pix.width, pix.height], pix.samples)
-        images.append(img)
+    Returns: (base64_image, num_embedded_images)
+    """
+    doc = fitz.open(stream=pdf_bytes, filetype="pdf")
+    page = doc[page_num - 1]  # 0-indexed
+
+    # Convert page to image
+    zoom = dpi / 72
+    mat = fitz.Matrix(zoom, zoom)
+    pix = page.get_pixmap(matrix=mat)
+
+    # Convert to PIL Image
+    img = Image.frombytes("RGB", [pix.width, pix.height], pix.samples)
+
+    # Count embedded images
+    image_list = page.get_images()
+    num_images = len(image_list)
 
     doc.close()
-    return images
+    del pix, page, doc  # Explicit cleanup
 
-
-def image_to_base64(image: Image.Image, format: str = "JPEG", quality: int = 85) -> str:
-    """Convert PIL Image to base64 with compression."""
+    # Convert to base64 JPEG with good quality
     buffered = BytesIO()
-    image.save(buffered, format=format, quality=quality, optimize=True)
-    return base64.b64encode(buffered.getvalue()).decode("utf-8")
+    img.save(buffered, format="JPEG", quality=85, optimize=True)
+    img_base64 = base64.b64encode(buffered.getvalue()).decode("utf-8")
 
+    del img, buffered  # Explicit cleanup
+    gc.collect()  # Force garbage collection
 
-def detect_images_in_pdf(pdf_bytes: bytes) -> Dict[int, int]:
-    """
-    Detect images in each page of PDF.
-    Returns dict: {page_number: image_count}
-    """
-    doc = fitz.open(stream=pdf_bytes, filetype="pdf")
-    image_counts = {}
-
-    for page_num in range(len(doc)):
-        page = doc[page_num]
-        image_list = page.get_images()
-        image_counts[page_num + 1] = len(image_list)
-
-    doc.close()
-    return image_counts
+    return img_base64, num_images
 
 
 @app.post("/ocr", response_model=List[OCRPageResponse])
@@ -498,9 +493,14 @@ async def ocr_endpoint(file: UploadFile = File(...)):
     """
     OCR endpoint for PDF text extraction with image detection.
 
+    **Memory-optimized**:
+    - Processes ONE page at a time (not all pages in memory)
+    - 100 DPI for best OCR accuracy
+    - JPEG quality 85%
+    - Immediate garbage collection after each page
+
     Uses VLM (Llama-4-Maverick-17B) for best accuracy:
     - Character Success Rate: 87.75%
-    - Word Success Rate: 61.91%
     - Processing: ~6s per page
 
     Returns:
@@ -511,11 +511,18 @@ async def ocr_endpoint(file: UploadFile = File(...)):
         pdf_bytes = await file.read()
         pdf_filename = file.filename or "document.pdf"
 
-        # Convert to images
-        images = pdf_to_images(pdf_bytes, dpi=100)
+        # Get page count
+        doc = fitz.open(stream=pdf_bytes, filetype="pdf")
+        total_pages = len(doc)
+        doc.close()
 
-        # Detect images per page
-        image_counts = detect_images_in_pdf(pdf_bytes)
+        # Optional page limit (configurable via env var, default: no limit)
+        max_pages = int(os.getenv("OCR_MAX_PAGES", "0"))  # 0 = unlimited
+        if max_pages > 0 and total_pages > max_pages:
+            raise HTTPException(
+                status_code=400,
+                detail=f"PDF has {total_pages} pages. Current limit is {max_pages} pages. Please split your PDF or increase OCR_MAX_PAGES environment variable."
+            )
 
         # OCR system prompt
         system_prompt = """You are an expert OCR system for historical oil & gas documents.
@@ -529,13 +536,13 @@ Extract ALL text from the image with 100% accuracy. Follow these rules:
 
 Output ONLY the extracted text. No explanations, no descriptions."""
 
-        # Process each page
+        # Process each page ONE AT A TIME (memory efficient)
         results = []
         client = get_azure_client()
 
-        for page_num, image in enumerate(images, 1):
-            # Convert image to base64
-            image_base64 = image_to_base64(image, format="JPEG", quality=85)
+        for page_num in range(1, total_pages + 1):
+            # Process single page (returns base64 image and releases memory immediately)
+            image_base64, num_images = process_pdf_page(pdf_bytes, page_num, dpi=100)
 
             # VLM OCR
             messages = [
@@ -559,7 +566,6 @@ Output ONLY the extracted text. No explanations, no descriptions."""
             page_text = response.choices[0].message.content
 
             # Add image references if images exist on this page
-            num_images = image_counts.get(page_num, 0)
             if num_images > 0:
                 for img_idx in range(1, num_images + 1):
                     page_text += f"\n\n![Image]({pdf_filename}/page_{page_num}/image_{img_idx})\n\n"
@@ -569,8 +575,14 @@ Output ONLY the extracted text. No explanations, no descriptions."""
                 "MD_text": page_text
             })
 
+            # Force cleanup after each page
+            del image_base64, messages, response
+            gc.collect()
+
         return results
 
+    except HTTPException:
+        raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"OCR Error: {str(e)}")
 
