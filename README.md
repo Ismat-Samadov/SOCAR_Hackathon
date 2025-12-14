@@ -317,9 +317,12 @@ We conducted comprehensive benchmarks to select the optimal language model for o
 - Python 3.11+
 - Azure OpenAI API key
 - Pinecone API key
-- Docker (optional)
+- Docker (optional, for containerized deployment)
+- ngrok (optional, for public URL)
 
-### Installation
+---
+
+### Option 1: Local Development (Recommended for Development)
 
 1. **Clone the repository**:
 ```bash
@@ -342,37 +345,234 @@ Required variables:
 ```env
 AZURE_OPENAI_API_KEY=your_azure_key
 AZURE_OPENAI_ENDPOINT=https://your-resource.openai.azure.com/
+AZURE_EMBEDDING_API_KEY=your_embedding_key  # If using separate resource
+AZURE_EMBEDDING_ENDPOINT=https://your-embedding.cognitiveservices.azure.com/
 PINECONE_API_KEY=your_pinecone_key
 PINECONE_INDEX_NAME=hackathon
 ```
 
 4. **Ingest PDFs** (one-time setup):
 ```bash
-# Test with single PDF
-python scripts/ingest_pdfs.py test
+# Ingest all PDFs from hackathon_data folder (parallel processing)
+python scripts/ingest_hackathon_data.py
 
-# Ingest all PDFs
-python scripts/ingest_pdfs.py
+# Check ingestion status
+python scripts/check_pinecone.py
 ```
 
-5. **Start the API**:
+5. **Start the API server**:
 ```bash
-cd app && uvicorn main:app --host 0.0.0.0 --port 8000
+cd app && uvicorn main:app --reload --host 0.0.0.0 --port 8000
 ```
+
+The `--reload` flag enables auto-reload on code changes (development mode).
 
 6. **Access the system**:
-- API Docs: http://localhost:8000/docs
-- Web UI: http://localhost:8000
-- Health Check: http://localhost:8000/health
+- **Web UI**: http://localhost:8000
+- **API Docs**: http://localhost:8000/docs
+- **Health Check**: http://localhost:8000/health
+- **ngrok URL** (if using ngrok): See ngrok setup below
 
-### Docker Deployment
+---
+
+### Option 2: Docker (Recommended for Production)
+
+#### Using Docker Compose (Easiest)
 
 ```bash
-# Build image
-docker build -t socar-ai .
+# Build and start the container
+docker-compose up --build
 
-# Run container
-docker run -p 8000:8000 --env-file .env socar-ai
+# Run in detached mode (background)
+docker-compose up -d
+
+# View logs
+docker-compose logs -f
+
+# Stop the container
+docker-compose down
+```
+
+Access at: http://localhost:8000
+
+#### Using Docker CLI
+
+```bash
+# Build the image
+docker build -t socar-ai-system .
+
+# Run the container
+docker run -d \
+  --name socar-ai \
+  -p 8000:8000 \
+  --env-file .env \
+  --restart unless-stopped \
+  socar-ai-system
+
+# View logs
+docker logs -f socar-ai
+
+# Stop the container
+docker stop socar-ai
+
+# Remove the container
+docker rm socar-ai
+```
+
+#### Docker Health Check
+
+The container includes automatic health checks:
+```bash
+# Check container health
+docker inspect --format='{{.State.Health.Status}}' socar-ai
+
+# Manual health check
+curl http://localhost:8000/health
+```
+
+---
+
+### Option 3: Public URL with ngrok (Optional)
+
+Make your local server publicly accessible for demos, testing, or hackathon submissions.
+
+#### Install ngrok
+
+**macOS** (using Homebrew):
+```bash
+brew install ngrok
+```
+
+**Linux/Windows**: Download from https://ngrok.com/download
+
+#### Setup ngrok Authentication (One-Time)
+
+1. Sign up at https://dashboard.ngrok.com/signup
+2. Get your auth token from https://dashboard.ngrok.com/get-started/your-authtoken
+3. Configure ngrok:
+```bash
+ngrok config add-authtoken YOUR_AUTHTOKEN
+```
+
+#### Start ngrok Tunnel
+
+**Basic tunnel** (random URL):
+```bash
+# Start ngrok tunnel to local port 8000
+ngrok http 8000
+```
+
+**Custom subdomain** (requires ngrok paid plan):
+```bash
+ngrok http 8000 --subdomain=socar-hackathon
+```
+
+**With specific region**:
+```bash
+ngrok http 8000 --region=eu  # Europe
+ngrok http 8000 --region=us  # United States
+```
+
+#### ngrok Output Example
+
+```
+ngrok
+
+Session Status                online
+Account                       your-email@example.com
+Version                       3.0.0
+Region                        United States (us)
+Latency                       45ms
+Web Interface                 http://127.0.0.1:4040
+Forwarding                    https://abc123.ngrok.io -> http://localhost:8000
+
+Connections                   ttl     opn     rt1     rt5     p50     p90
+                              0       0       0.00    0.00    0.00    0.00
+```
+
+Your **public URL** is: `https://abc123.ngrok.io`
+
+#### ngrok Web Interface
+
+Access http://127.0.0.1:4040 for:
+- Request inspection
+- Replay requests
+- Traffic analysis
+- Response details
+
+#### Keep ngrok Running
+
+**Using tmux** (recommended for servers):
+```bash
+# Start tmux session
+tmux new -s ngrok
+
+# Inside tmux: start ngrok
+ngrok http 8000
+
+# Detach: Press Ctrl+B, then D
+# Reattach: tmux attach -t ngrok
+```
+
+**Using nohup**:
+```bash
+nohup ngrok http 8000 > ngrok.log 2>&1 &
+
+# View logs
+tail -f ngrok.log
+
+# Get ngrok URL
+curl http://localhost:4040/api/tunnels | grep -o 'https://[^"]*ngrok.io'
+```
+
+---
+
+### Complete Setup Example (Local + ngrok)
+
+```bash
+# Terminal 1: Start the API server
+cd SOCAR_Hackathon/app
+uvicorn main:app --reload --host 0.0.0.0 --port 8000
+
+# Terminal 2: Start ngrok tunnel
+ngrok http 8000
+
+# Your app is now accessible at:
+# - Local: http://localhost:8000
+# - Public: https://abc123.ngrok.io (from ngrok output)
+```
+
+---
+
+### Verify Installation
+
+Test all endpoints:
+
+```bash
+# Health check
+curl http://localhost:8000/health
+
+# LLM endpoint test
+curl -X POST http://localhost:8000/llm \
+  -H "Content-Type: application/json" \
+  -d '{"question": "SOCAR haqqında məlumat verin"}'
+
+# OCR endpoint test (requires PDF file)
+curl -X POST http://localhost:8000/ocr \
+  -F "file=@/path/to/document.pdf"
+```
+
+Expected response for health check:
+```json
+{
+  "status": "healthy",
+  "pinecone": {
+    "connected": true,
+    "total_vectors": 606
+  },
+  "azure_openai": "connected",
+  "embedding_model": "loaded"
+}
 ```
 
 ---
