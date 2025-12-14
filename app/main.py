@@ -1,15 +1,21 @@
 """
-SOCAR Hackathon - LLM Chatbot Endpoint
-Optimized based on RAG benchmark results
-Best config: citation_focused + vanilla_k3 + Llama-4-Maverick
+SOCAR Hackathon - Complete API with /ocr and /llm endpoints
+Optimized based on comprehensive benchmarking:
+- OCR: Llama-4-Maverick-17B (87.75% CSR)
+- LLM: citation_focused + vanilla_k3 + Llama-4-Maverick (55.67% score)
 """
 
 import os
+import re
 import time
+import base64
 from typing import List, Dict
 from pathlib import Path
+from io import BytesIO
 
-from fastapi import FastAPI, HTTPException
+import fitz  # PyMuPDF
+from PIL import Image
+from fastapi import FastAPI, HTTPException, File, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from dotenv import load_dotenv
@@ -273,6 +279,138 @@ async def llm_endpoint(request: ChatRequest):
         raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error: {str(e)}")
+
+
+# ============================================================================
+# OCR ENDPOINT
+# ============================================================================
+
+class OCRPageResponse(BaseModel):
+    page_number: int
+    MD_text: str
+
+
+def pdf_to_images(pdf_bytes: bytes, dpi: int = 100) -> List[Image.Image]:
+    """Convert PDF bytes to PIL Images."""
+    doc = fitz.open(stream=pdf_bytes, filetype="pdf")
+    images = []
+
+    for page_num in range(len(doc)):
+        page = doc[page_num]
+        zoom = dpi / 72
+        mat = fitz.Matrix(zoom, zoom)
+        pix = page.get_pixmap(matrix=mat)
+        img = Image.frombytes("RGB", [pix.width, pix.height], pix.samples)
+        images.append(img)
+
+    doc.close()
+    return images
+
+
+def image_to_base64(image: Image.Image, format: str = "JPEG", quality: int = 85) -> str:
+    """Convert PIL Image to base64 with compression."""
+    buffered = BytesIO()
+    image.save(buffered, format=format, quality=quality, optimize=True)
+    return base64.b64encode(buffered.getvalue()).decode("utf-8")
+
+
+def detect_images_in_pdf(pdf_bytes: bytes) -> Dict[int, int]:
+    """
+    Detect images in each page of PDF.
+    Returns dict: {page_number: image_count}
+    """
+    doc = fitz.open(stream=pdf_bytes, filetype="pdf")
+    image_counts = {}
+
+    for page_num in range(len(doc)):
+        page = doc[page_num]
+        image_list = page.get_images()
+        image_counts[page_num + 1] = len(image_list)
+
+    doc.close()
+    return image_counts
+
+
+@app.post("/ocr", response_model=List[OCRPageResponse])
+async def ocr_endpoint(file: UploadFile = File(...)):
+    """
+    OCR endpoint for PDF text extraction with image detection.
+
+    Uses VLM (Llama-4-Maverick-17B) for best accuracy:
+    - Character Success Rate: 87.75%
+    - Word Success Rate: 61.91%
+    - Processing: ~6s per page
+
+    Returns:
+        List of {page_number, MD_text} with inline image references
+    """
+    try:
+        # Read PDF
+        pdf_bytes = await file.read()
+        pdf_filename = file.filename or "document.pdf"
+
+        # Convert to images
+        images = pdf_to_images(pdf_bytes, dpi=100)
+
+        # Detect images per page
+        image_counts = detect_images_in_pdf(pdf_bytes)
+
+        # OCR system prompt
+        system_prompt = """You are an expert OCR system for historical oil & gas documents.
+
+Extract ALL text from the image with 100% accuracy. Follow these rules:
+1. Preserve EXACT spelling - including Azerbaijani, Russian, and English text
+2. Maintain original Cyrillic characters - DO NOT transliterate
+3. Keep all numbers, symbols, and special characters exactly as shown
+4. Preserve layout structure (paragraphs, line breaks)
+5. Include ALL text - headers, body, footnotes, tables, captions
+
+Output ONLY the extracted text. No explanations, no descriptions."""
+
+        # Process each page
+        results = []
+        client = get_azure_client()
+
+        for page_num, image in enumerate(images, 1):
+            # Convert image to base64
+            image_base64 = image_to_base64(image, format="JPEG", quality=85)
+
+            # VLM OCR
+            messages = [
+                {"role": "system", "content": system_prompt},
+                {
+                    "role": "user",
+                    "content": [
+                        {"type": "text", "text": f"Extract all text from page {page_num}:"},
+                        {"type": "image_url", "image_url": {"url": f"data:image/jpeg;base64,{image_base64}"}}
+                    ]
+                }
+            ]
+
+            response = client.chat.completions.create(
+                model="Llama-4-Maverick-17B-128E-Instruct-FP8",
+                messages=messages,
+                temperature=0.0,  # Deterministic OCR
+                max_tokens=4000
+            )
+
+            page_text = response.choices[0].message.content
+
+            # Add image references if images exist on this page
+            num_images = image_counts.get(page_num, 0)
+            if num_images > 0:
+                for img_idx in range(1, num_images + 1):
+                    page_text += f"\n\n![Image]({pdf_filename}/page_{page_num}/image_{img_idx})\n\n"
+
+            results.append({
+                "page_number": page_num,
+                "MD_text": page_text
+            })
+
+        return results
+
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"OCR Error: {str(e)}")
 
 
 if __name__ == "__main__":

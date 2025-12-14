@@ -1,5 +1,5 @@
-# SOCAR Hackathon LLM Endpoint Dependencies
-# Optimized for production deployment
+# SOCAR Hackathon - Complete API Dependencies
+# Optimized for production deployment with /ocr and /llm endpoints
 
 # FastAPI and server
 fastapi==0.109.0
@@ -17,9 +17,14 @@ sentence-transformers==3.3.1
 torch==2.5.1
 numpy<2.0.0
 
+# PDF processing and OCR
+PyMuPDF==1.23.8
+Pillow==10.1.0
+
 # Utilities
 python-dotenv==1.0.0
 python-multipart==0.0.6
+tqdm==4.66.1
 
 # Optional: monitoring and logging
 prometheus-fastapi-instrumentator==7.0.0
