@@ -1,0 +1,1 @@
+"""SOCAR Hackathon utility scripts"""

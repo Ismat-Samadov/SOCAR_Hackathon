@@ -1,6 +1,8 @@
 .claude
-/docs
-/data
+
+data/pdfs
+data/vector_db
+data/ai_track_data
 .env
 .env.local
 .env.development.local

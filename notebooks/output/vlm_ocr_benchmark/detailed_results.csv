@@ -1,3 +1,0 @@
-Model,Response_Time,CER,WER,CSR,WSR,Char_Count_Ref,Char_Count_Hyp,Word_Count_Ref,Word_Count_Hyp,Char_Length_Accuracy,Word_Length_Accuracy,Rating,Notes,Extracted_Preview
-GPT-4.1,120.73,13.83,31.81,86.17,68.19,22306,21980,2587,2533,98.54,97.91,⭐⭐⭐⭐⭐,Excellent OCR,"Xülasə
-Bu məqalə Apşə Kər çökəkliyi (AKÇ) və Bakı arxipelaqı (BA) daxil olmaqla Cənubi Xəzər çökəkliyi sistemində faydalı qazıntıların mənşəyinin paleotektonik, paleocoğrafi şərati və geodinamik rejim"
