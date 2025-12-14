@@ -20,7 +20,7 @@ pnpm-debug.log*
 coverage
 .idea
 *.iml
-*.log
+# *.log
 __pycache__
 *.pyc
 *.pyo
