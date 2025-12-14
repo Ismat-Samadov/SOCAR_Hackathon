@@ -112,13 +112,18 @@ def get_pinecone_index():
 
 def get_embedding(text: str) -> List[float]:
     """
-    Get embedding using Azure OpenAI API instead of local model.
-    This saves ~400MB memory by not loading SentenceTransformer locally.
+    Generate embedding for semantic search.
 
-    Uses text-embedding-3-small with dimensions=1024 to match existing Pinecone index
-    (which was created with BAAI/bge-large-en-v1.5 at 1024 dimensions).
+    IMPORTANT: You need to deploy an embedding model in Azure OpenAI Studio:
+    1. Go to Azure OpenAI Studio → Deployments
+    2. Create deployment: text-embedding-3-small
+    3. Set dimensions to 1024 to match Pinecone index
+
+    Alternative: Set AZURE_EMBEDDING_MODEL env var to your deployment name
     """
     client = get_azure_client()
+
+    # Get embedding model from env or use default
     embedding_model = os.getenv("AZURE_EMBEDDING_MODEL", "text-embedding-3-small")
     embedding_dims = int(os.getenv("AZURE_EMBEDDING_DIMS", "1024"))
 
@@ -126,12 +131,29 @@ def get_embedding(text: str) -> List[float]:
         response = client.embeddings.create(
             input=text,
             model=embedding_model,
-            dimensions=embedding_dims  # Match Pinecone index dimensions
+            dimensions=embedding_dims
         )
         return response.data[0].embedding
     except Exception as e:
-        # Fallback: return zero vector if embedding fails
-        print(f"Embedding error: {e}")
+        error_msg = str(e)
+
+        # Provide helpful error message
+        if "DeploymentNotFound" in error_msg or "404" in error_msg:
+            print(f"❌ EMBEDDING ERROR: Deployment '{embedding_model}' not found in Azure OpenAI")
+            print(f"")
+            print(f"📋 FIX THIS BY DEPLOYING THE MODEL:")
+            print(f"   1. Go to: https://oai.azure.com/portal")
+            print(f"   2. Navigate to: Deployments → Create new deployment")
+            print(f"   3. Model: text-embedding-3-small")
+            print(f"   4. Deployment name: text-embedding-3-small")
+            print(f"   5. Set: dimensions=1024")
+            print(f"")
+            print(f"   OR set environment variable:")
+            print(f"   AZURE_EMBEDDING_MODEL=<your-existing-embedding-deployment>")
+        else:
+            print(f"Embedding error: {e}")
+
+        # Return zero vector (will not match documents, but API won't crash)
         return [0.0] * embedding_dims
 
 
@@ -170,10 +192,12 @@ def retrieve_documents(query: str, top_k: int = 3) -> List[Dict]:
     """
     Retrieve relevant documents from Pinecone vector database.
     Best strategy from benchmark: vanilla top-3
+
+    Uses Azure OpenAI embeddings (1024-dim) for memory efficiency on Render free tier.
     """
     index = get_pinecone_index()
 
-    # Generate query embedding using Azure OpenAI (memory efficient)
+    # Generate query embedding
     query_embedding = get_embedding(query)
 
     # Search vector database
@@ -287,13 +311,13 @@ async def llm_endpoint(request: Request):
     LLM chatbot endpoint for SOCAR historical documents.
 
     Uses RAG (Retrieval Augmented Generation) with:
-    - Embedding: BAAI/bge-large-en-v1.5
-    - Retrieval: Top-3 documents
+    - Embedding: Azure OpenAI text-embedding-3-small @ 1024-dim
+    - Retrieval: Top-3 documents (Pinecone)
     - LLM: Llama-4-Maverick-17B (open-source)
     - Prompt: Citation-focused
 
     Expected performance:
-    - Response time: ~3.6s
+    - Response time: ~4.0s
     - LLM Judge Score: 55.67%
     - Citation Score: 73.33%
 
