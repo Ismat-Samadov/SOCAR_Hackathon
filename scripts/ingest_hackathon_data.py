@@ -1,6 +1,6 @@
 """
 Ingest ONLY PDFs from hackathon_data folder
-Parallel processing with 4 workers
+Parallel processing with 4 workers using ThreadPoolExecutor (better for I/O-bound tasks)
 """
 
 import os
@@ -8,33 +8,40 @@ import sys
 import time
 import json
 from pathlib import Path
-from concurrent.futures import ProcessPoolExecutor, as_completed
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from dotenv import load_dotenv
 
-# Add parent directory to path
-sys.path.insert(0, str(Path(__file__).parent))
-
-# Load environment
+# Load environment first (before any imports that need env vars)
 load_dotenv()
 
-# Import from the main ingestion script
+# Project paths
 PROJECT_ROOT = Path(__file__).parent.parent
 PDFS_DIR = PROJECT_ROOT / "data" / "hackathon_data"  # Changed to hackathon_data
 OUTPUT_DIR = PROJECT_ROOT / "output" / "ingestion"
 
-# Import the ingestion function
-import ingest_pdfs
+# Add parent directory to path for imports
+sys.path.insert(0, str(Path(__file__).parent))
+
 
 def worker_ingest(pdf_path: str):
-    """Worker function to ingest a single PDF"""
+    """
+    Worker function to ingest a single PDF.
+    Uses lazy imports to avoid issues with multiprocessing/threading.
+    """
     try:
+        # Import here to avoid global state issues in parallel execution
+        import ingest_pdfs
+
+        # Call the ingestion function
         result = ingest_pdfs.ingest_pdf(str(pdf_path))
         return result
     except Exception as e:
+        import traceback
         return {
             "pdf_name": Path(pdf_path).name,
             "status": "error",
-            "error": str(e)
+            "error": str(e),
+            "traceback": traceback.format_exc()
         }
 
 
@@ -45,8 +52,30 @@ def main():
     print("="*70)
     print(f"📂 PDF Directory: {PDFS_DIR}")
     print(f"⚡ Workers: 4 PDFs at once")
-    print(f"🎯 Vector Database: Pinecone ({os.getenv('PINECONE_INDEX_NAME')})")
+    print(f"🎯 Vector Database: Pinecone ({os.getenv('PINECONE_INDEX_NAME', 'hackathon')})")
     print("="*70)
+
+    # Validate required environment variables
+    required_env_vars = [
+        "AZURE_OPENAI_API_KEY",
+        "AZURE_OPENAI_ENDPOINT",
+        "PINECONE_API_KEY",
+        "PINECONE_INDEX_NAME"
+    ]
+
+    missing_vars = [var for var in required_env_vars if not os.getenv(var)]
+    if missing_vars:
+        print(f"\n❌ Missing required environment variables:")
+        for var in missing_vars:
+            print(f"   - {var}")
+        print("\nPlease set these in your .env file.")
+        return
+
+    # Check if directory exists
+    if not PDFS_DIR.exists():
+        print(f"\n❌ Directory not found: {PDFS_DIR}")
+        print(f"   Please create the directory and add PDFs to it.")
+        return
 
     # Get all PDFs
     all_pdfs = sorted(PDFS_DIR.glob("*.pdf"))
@@ -54,6 +83,7 @@ def main():
 
     if not all_pdfs:
         print("\n❌ No PDFs found in hackathon_data folder!")
+        print(f"   Please add PDF files to: {PDFS_DIR}")
         return
 
     for pdf in all_pdfs:
@@ -62,12 +92,13 @@ def main():
     print(f"\n⚡ Starting parallel processing with 4 workers...")
     print(f"⏱️  Estimated time: ~{len(all_pdfs) * 80 / 4 / 60:.1f} minutes\n")
 
-    # Process in parallel
+    # Process in parallel using ThreadPoolExecutor
+    # (Better for I/O-bound tasks like API calls to Azure and Pinecone)
     results = []
     completed = 0
     start_time = time.time()
 
-    with ProcessPoolExecutor(max_workers=4) as executor:
+    with ThreadPoolExecutor(max_workers=4) as executor:
         # Submit all jobs
         future_to_pdf = {
             executor.submit(worker_ingest, str(pdf)): pdf
@@ -148,10 +179,19 @@ def main():
         stats = index.describe_index_stats()
 
         print(f"\n📊 Final Pinecone Stats:")
-        print(f"   Total Vectors: {stats.get('total_vector_count', 0)}")
-        print(f"   Dimensions: {stats.get('dimension', 0)}")
+        # Handle both dict-like and object attribute access
+        total_vectors = getattr(stats, 'total_vector_count', None) or stats.get('total_vector_count', 0)
+        dimension = getattr(stats, 'dimension', None) or stats.get('dimension', 0)
+        print(f"   Total Vectors: {total_vectors}")
+        print(f"   Dimensions: {dimension}")
+
+        # Show namespaces if available
+        namespaces = getattr(stats, 'namespaces', None) or stats.get('namespaces', {})
+        if namespaces:
+            print(f"   Namespaces: {len(namespaces)}")
     except Exception as e:
-        print(f"\nCould not fetch Pinecone stats: {e}")
+        print(f"\n⚠️  Could not fetch Pinecone stats: {e}")
+        print(f"   (This is non-fatal - ingestion was still successful)")
 
     print("\n" + "="*70)
     print("🎉 HACKATHON DATA INGESTION COMPLETE!")
