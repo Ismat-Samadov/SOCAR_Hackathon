@@ -114,21 +114,30 @@ def get_embedding(text: str) -> List[float]:
     """
     Generate embedding for semantic search.
 
-    IMPORTANT: You need to deploy an embedding model in Azure OpenAI Studio:
-    1. Go to Azure OpenAI Studio → Deployments
-    2. Create deployment: text-embedding-3-small
-    3. Set dimensions to 1024 to match Pinecone index
-
-    Alternative: Set AZURE_EMBEDDING_MODEL env var to your deployment name
+    Uses separate Azure OpenAI resource for embeddings (memory-efficient for Render free tier).
+    Supports custom endpoint/key via AZURE_EMBEDDING_* environment variables.
     """
-    client = get_azure_client()
+    # Check if using separate embedding resource
+    embedding_endpoint = os.getenv("AZURE_EMBEDDING_ENDPOINT")
+    embedding_api_key = os.getenv("AZURE_EMBEDDING_API_KEY")
+
+    if embedding_endpoint and embedding_api_key:
+        # Use separate embedding client
+        embedding_client = AzureOpenAI(
+            api_key=embedding_api_key,
+            api_version=os.getenv("AZURE_OPENAI_API_VERSION", "2024-08-01-preview"),
+            azure_endpoint=embedding_endpoint
+        )
+    else:
+        # Fallback to main Azure client
+        embedding_client = get_azure_client()
 
     # Get embedding model from env or use default
     embedding_model = os.getenv("AZURE_EMBEDDING_MODEL", "text-embedding-3-small")
     embedding_dims = int(os.getenv("AZURE_EMBEDDING_DIMS", "1024"))
 
     try:
-        response = client.embeddings.create(
+        response = embedding_client.embeddings.create(
             input=text,
             model=embedding_model,
             dimensions=embedding_dims
@@ -139,17 +148,9 @@ def get_embedding(text: str) -> List[float]:
 
         # Provide helpful error message
         if "DeploymentNotFound" in error_msg or "404" in error_msg:
-            print(f"❌ EMBEDDING ERROR: Deployment '{embedding_model}' not found in Azure OpenAI")
-            print(f"")
-            print(f"📋 FIX THIS BY DEPLOYING THE MODEL:")
-            print(f"   1. Go to: https://oai.azure.com/portal")
-            print(f"   2. Navigate to: Deployments → Create new deployment")
-            print(f"   3. Model: text-embedding-3-small")
-            print(f"   4. Deployment name: text-embedding-3-small")
-            print(f"   5. Set: dimensions=1024")
-            print(f"")
-            print(f"   OR set environment variable:")
-            print(f"   AZURE_EMBEDDING_MODEL=<your-existing-embedding-deployment>")
+            print(f"❌ EMBEDDING ERROR: Deployment '{embedding_model}' not found")
+            print(f"   Endpoint: {embedding_endpoint or os.getenv('AZURE_OPENAI_ENDPOINT')}")
+            print(f"   Model: {embedding_model}")
         else:
             print(f"Embedding error: {e}")
 
