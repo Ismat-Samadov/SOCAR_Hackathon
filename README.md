@@ -51,34 +51,49 @@ The SOCAR Historical Documents AI System is a sophisticated document intelligenc
 
 ## System Architecture
 
-```
-┌─────────────────────────────────────────────────────────────┐
-│                     SOCAR AI System                         │
-├─────────────────────────────────────────────────────────────┤
-│                                                             │
-│  ┌──────────────┐        ┌──────────────┐                 │
-│  │  OCR Engine  │        │  RAG Engine  │                 │
-│  │              │        │              │                 │
-│  │ VLM-Based    │        │ Semantic     │                 │
-│  │ Text Extract │        │ Search + LLM │                 │
-│  └──────┬───────┘        └──────┬───────┘                 │
-│         │                       │                          │
-│         └───────────┬───────────┘                          │
-│                     │                                       │
-│              ┌──────▼──────┐                               │
-│              │   FastAPI   │                               │
-│              │  REST API   │                               │
-│              └──────┬──────┘                               │
-│                     │                                       │
-│         ┌───────────┼───────────┐                          │
-│         │           │           │                          │
-│  ┌──────▼─────┐ ┌──▼────┐ ┌────▼─────┐                   │
-│  │   Azure    │ │Pinecone│ │  PyMuPDF │                   │
-│  │  OpenAI    │ │Vector  │ │   PDF    │                   │
-│  │   (VLM)    │ │   DB   │ │Processing│                   │
-│  └────────────┘ └────────┘ └──────────┘                   │
-│                                                             │
-└─────────────────────────────────────────────────────────────┘
+```mermaid
+graph TB
+    subgraph "SOCAR AI System"
+        subgraph "Processing Layer"
+            OCR[OCR Engine<br/>VLM-Based Text Extraction<br/>87.75% Accuracy]
+            RAG[RAG Engine<br/>Semantic Search + LLM<br/>4.0s Response Time]
+        end
+
+        subgraph "API Layer"
+            API[FastAPI REST API<br/>Async Architecture<br/>POST /ocr, /llm]
+        end
+
+        subgraph "Infrastructure Layer"
+            Azure[Azure OpenAI<br/>Llama-4-Maverick-17B<br/>VLM + LLM Inference]
+            Pinecone[Pinecone Vector DB<br/>2,100 Vectors<br/>1024 Dimensions]
+            PyMuPDF[PyMuPDF<br/>PDF Processing<br/>Image Extraction]
+        end
+    end
+
+    User([User]) -->|Upload PDF| API
+    User -->|Ask Question| API
+
+    API -->|PDF to Image| OCR
+    API -->|Query| RAG
+
+    OCR -->|Images| Azure
+    RAG -->|Embedding| Azure
+    RAG -->|Search| Pinecone
+
+    Azure -->|Text| OCR
+    Azure -->|Answer| RAG
+
+    OCR -->|Parse PDF| PyMuPDF
+
+    API -->|Response| User
+
+    style OCR fill:#8b5cf6,stroke:#7c3aed,stroke-width:2px,color:#fff
+    style RAG fill:#10b981,stroke:#059669,stroke-width:2px,color:#fff
+    style API fill:#3b82f6,stroke:#2563eb,stroke-width:2px,color:#fff
+    style Azure fill:#f59e0b,stroke:#d97706,stroke-width:2px,color:#fff
+    style Pinecone fill:#ec4899,stroke:#db2777,stroke-width:2px,color:#fff
+    style PyMuPDF fill:#6366f1,stroke:#4f46e5,stroke-width:2px,color:#fff
+    style User fill:#64748b,stroke:#475569,stroke-width:2px,color:#fff
 ```
 
 **Data Flow**:
