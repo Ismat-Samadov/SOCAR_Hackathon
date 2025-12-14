@@ -1,0 +1,24 @@
+# VLM OCR Benchmarking Requirements
+# Install with: pip install -r requirements_vlm_ocr.txt
+
+# Azure OpenAI client (for vision models)
+openai==1.54.0
+
+# PDF processing
+PyMuPDF==1.23.8
+Pillow==10.1.0
+
+# Metrics
+jiwer==3.0.3
+
+# Data analysis and visualization
+pandas==2.1.3
+matplotlib==3.8.2
+seaborn==0.13.0
+
+# Utilities
+python-dotenv==1.0.0
+
+# Jupyter
+jupyter==1.0.0
+ipykernel==6.27.1
