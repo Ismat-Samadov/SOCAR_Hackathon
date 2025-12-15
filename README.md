@@ -63,6 +63,11 @@ The SOCAR Historical Documents AI System is a sophisticated document intelligenc
 
 **Team BeatByte - 3rd Place**
 
+### Team Members
+- **Ismat Samadov** - [GitHub](https://github.com/Ismat-Samadov)
+- **Ulvi Bashirov** - [GitHub](https://github.com/ulvibashir)
+- **Samir Mehdiyev** - [GitHub](https://github.com/samirmehd1yev)
+
 ![Team Performance Results](docs/team_results.png)
 
 | Rank | Team Name | Total Score out of 300 | Total Score out of 500 | Total Presentation Score | Total Score |
@@ -1198,6 +1203,12 @@ Contributions are welcome! Please follow these guidelines:
 
 ## Acknowledgments
 
+### Team Members
+- **Ismat Samadov** - [GitHub](https://github.com/Ismat-Samadov)
+- **Ulvi Bashirov** - [GitHub](https://github.com/ulvibashir)
+- **Samir Mehdiyev** - [GitHub](https://github.com/samirmehd1yev)
+
+### Technologies & Partners
 - **SOCAR** - State Oil Company of Azerbaijan Republic
 - **Azure OpenAI** - LLM inference platform
 - **Pinecone** - Vector database infrastructure
@@ -1206,4 +1217,4 @@ Contributions are welcome! Please follow these guidelines:
 
 ---
 
-*Last Updated: December 14, 2025*
+*Last Updated: December 15, 2025*
